@@ -7,8 +7,6 @@ from torch_geometric.nn import GCNConv, NNConv, global_max_pool
 from torch_geometric.data import Data
 from torch_scatter import scatter_mean
 
-#device = torch.device(0) # TODO: 
-
 class EdgeNN(nn.Module):
     """
     Design: embedding according to edge type, and then modulated by edge features.
