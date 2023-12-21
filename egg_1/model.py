@@ -36,9 +36,9 @@ class DisNodeFeat(nn.Module):
             )
         )
 
-    def forward(self):
+    def forward(self, batch_size=None):
         self.dist = td.Categorical(logits=self.cell_logits)
-        self.sample = self.dist.sample([self.node_size]).squeeze()
+        self.sample = self.dist.sample([batch_size, self.node_size]).squeeze()
         return self.sample + 1 # category indexing starts at 1. 
 
 # %%
@@ -53,20 +53,22 @@ class AdjacencyMatrix(nn.Module):
             )
         )
 
-    def forward(self):
+    def forward(self, batch_size=None):
         self.dist = td.Bernoulli(logits=self.edge_logits)
-        self.sample = self.dist.sample().squeeze()
+        self.sample = self.dist.sample([batch_size]).squeeze()
         return self.sample
 
 
 # %% Full Model 
 class EGG(nn.Module):
-    def __init__(self, node_size, cont_node_feat, cell_types, cont_edge_feat): 
+    def __init__(self, node_size, cont_node_feat, cell_types, cont_edge_feat, 
+                 batch_size=None): 
         super(EGG, self).__init__()
         self.node_size = node_size
         self.cont_node_feat = cont_node_feat       
         self.cell_types = cell_types
         self.cont_edge_feat = cont_edge_feat
+        self.batch_size = batch_size
 
         # Sub-Generator models.
         self.ContNodeFeats = ContNodeFeats(self.node_size, self.cont_node_feat)
@@ -74,12 +76,17 @@ class EGG(nn.Module):
         self.AdjacencyMatrix = AdjacencyMatrix(self.node_size)
 
     def forward(self):
+        # Sub-Generator models.
         X = self.ContNodeFeats()
 
-        C_x = self.DisNodeFeat()
+        C_x = self.DisNodeFeat(self.batch_size)
 
-        A = self.AdjacencyMatrix()
-        A = dense_to_sparse(A)[0]
+        A = self.AdjacencyMatrix(self.batch_size)
+
+        if self.batch_size is not None: 
+            A = [dense_to_sparse(x)[0] for x in torch.unbind(A)]
+        else: 
+            A = dense_to_sparse(A)[0]
 
         # Discrete Edge Features:
         edges = list(zip(A.long()[0], A.long()[1]))
