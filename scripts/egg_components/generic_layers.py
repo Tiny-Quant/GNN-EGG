@@ -61,7 +61,7 @@ class CatFeatVector(nn.Module):
         return sample, logLik
 
 # %%
-class BinaryMatrix(nn.module):
+class BinaryMatrix(nn.Module):
     '''
     Generates a matrix where each entry is sampled from an independent 
     Bernoulli distribution (trainable parameters).
