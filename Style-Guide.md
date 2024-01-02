@@ -15,7 +15,15 @@ GNN-EGG/ (repo)
   |
   |-- notebooks/ (exploratory)
   |
-  |-- scripts/ (.py)
+  |-- egg_models/
+  |  |
+  |  |-- egg_components/ (layers, losses, trainer)
+  |  | 
+  |  |-- egg_x.py (final model built from components)
+  |  |
+  |  |-- train_egg_x.py (runnable script, terminal options, logging)
+  | 
+  |-- pkgs/ (.py)
   |     |-- template/ (includes files for unit tests)
   |     |
   |     |-- utils/ (mostly data processing or helpers)
@@ -24,13 +32,6 @@ GNN-EGG/ (repo)
   |     | 
   |     |-- visuals/
   |     |
-  |     |-- egg_components/ (layers, losses, trainer)
-  |     |
-  |     |-- egg_models/
-  |       | 
-  |       |-- egg_x.py (final model built from components)
-  |       |
-  |       |-- train_egg_x.py (runnable script, terminal options, logging)
   |
   |-- archive/
 ```
