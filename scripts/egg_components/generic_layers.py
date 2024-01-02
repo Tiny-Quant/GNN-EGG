@@ -1,0 +1,88 @@
+
+# %% Dependencies
+
+# torch 
+import torch 
+import torch.distributions as td 
+import torch.nn as nn 
+from torch.multiprocessing import Pool  
+
+# %% 
+class ContFeatMatrix(nn.Module):
+    '''
+    Generates a continuous feature matrix based on a linear transformation of 
+    a sampled standard random normal vector. 
+
+    returns a continuous and differentiable tensor of size [batch, obs, feats].
+    '''
+    def __init__(self, batch_size, num_obs, num_feats):
+        super(ContFeatMatrix, self).__init__()
+        self.batch_size = batch_size
+        self.num_obs = num_obs
+        self.num_feats = num_feats
+
+        self.linear = nn.Linear(self.num_obs, 
+            self.num_obs * self.num_feats)
+
+    def forward(self):
+        Z = torch.randn((self.batch_size, self.num_obs))
+        X = self.linear(Z)
+        X = X.view(self.batch_size, self.num_obs, self.num_feats)
+        return X
+
+# %%
+class CatFeatVector(nn.Module):
+    '''
+    Generates a discrete feature vector sampled from a categorical distribution.
+    The parameters of the distribution defined to be trainable based on the logLik.
+
+    returns a non-differentiable tensor of size [batch, obs] and a 
+    differentiable logLik tensor of size [batch].
+    '''
+    def __init__(self, batch_size, num_obs, num_cats):
+        super(CatFeatVector, self).__init__()
+        self.batch_size = batch_size
+        self.num_obs = num_obs
+        self.num_cats = num_cats
+
+        self.logits = nn.Parameter(
+            nn.init.xavier_normal_( # Glorot initialization. 
+                torch.empty((1, self.num_cats))
+            )
+        )
+
+    def forward(self):
+        dist = td.categorical(logits=self.logits)
+        sample = dist.sample(
+            (self.batch_size, self.num_obs)
+        ).squeeze(2) # sample adds an extra dim.
+        logLik = dist.log_prob(sample).sum(dim=1)
+
+        return sample, logLik
+
+# %%
+class BinaryMatrix(nn.module):
+    '''
+    Generates a matrix where each entry is sampled from an independent 
+    Bernoulli distribution (trainable parameters).
+
+    returns a non-differentiable tensor of size [batch, num_rows, num_cols]
+    and a tensor containing the logLik of each matrix of size [batch].
+    '''
+    def __init__(self, batch_size, num_rows, num_cols):
+        super(BinaryMatrix, self).__init__()
+        self.batch_size = batch_size
+        self.num_rows = num_rows
+        self.num_cols = num_cols
+
+        self.logits = nn.parameter(
+            nn.init.xavier_normal_( # glorot initialization. 
+                torch.empty((self.num_rows, self.num_cols))
+            )
+        )
+
+    def forward(self):
+        dist = td.bernoulli(logits=self.logits)
+        sample = dist.sample([self.batch_size])
+        logLik = dist.log_prob(sample).sum(dim=(1,2))
+        return sample, logLik
