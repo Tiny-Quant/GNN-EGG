@@ -52,7 +52,7 @@ class CatFeatVector(nn.Module):
         )
 
     def forward(self):
-        dist = td.categorical(logits=self.logits)
+        dist = td.Categorical(logits=self.logits)
         sample = dist.sample(
             (self.batch_size, self.num_obs)
         ).squeeze(2) # sample adds an extra dim.
@@ -75,14 +75,14 @@ class BinaryMatrix(nn.Module):
         self.num_rows = num_rows
         self.num_cols = num_cols
 
-        self.logits = nn.parameter(
+        self.logits = nn.Parameter(
             nn.init.xavier_normal_( # glorot initialization. 
                 torch.empty((self.num_rows, self.num_cols))
             )
         )
 
     def forward(self):
-        dist = td.bernoulli(logits=self.logits)
+        dist = td.Bernoulli(logits=self.logits)
         sample = dist.sample([self.batch_size])
         logLik = dist.log_prob(sample).sum(dim=(1,2))
         return sample, logLik

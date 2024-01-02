@@ -51,7 +51,6 @@ class EggHardNx(nn.Module):
         E = E.narrow(dim=1, start=0, length=A.shape[2]) # undo layer padding.
 
         C_e = assign_edge_type_par(A, C_x)
-
         E = torch.cat((C_e, E), dim=-1)
 
         return X, C_x, A, E, C_x_logLik, A_logLik 
