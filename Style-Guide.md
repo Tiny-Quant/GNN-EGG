@@ -23,7 +23,7 @@ GNN-EGG/ (repo)
   |  |
   |  |-- train_egg_x.py (runnable script, terminal options, logging)
   | 
-  |-- pkgs/ (.py)
+  |-- scripts/ (.py)
   |     |-- template/ (includes files for unit tests)
   |     |
   |     |-- utils/ (mostly data processing or helpers)
