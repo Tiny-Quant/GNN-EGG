@@ -37,6 +37,8 @@ class EggHardNx(nn.Module):
         self.ContEdgeFeats = generic_layers.ContFeatMatrix(
             self.batch_size, self.node_size**2, self.cont_edge_feat
         )
+
+        self.device_param = nn.Parameter(torch.empty(0))
     
     def forward(self):
         X = self.ContNodeFeats()
@@ -50,7 +52,8 @@ class EggHardNx(nn.Module):
         E = self.ContEdgeFeats()
         E = E.narrow(dim=1, start=0, length=A.shape[2]) # undo layer padding.
 
-        C_e = assign_edge_type_par(A, C_x)
+        # Parallel always returns to the cpu for some reason.
+        C_e = assign_edge_type_par(A, C_x).to(self.device_param.device)
         E = torch.cat((C_e, E), dim=-1)
 
         return X, C_x, A, E, C_x_logLik, A_logLik 
