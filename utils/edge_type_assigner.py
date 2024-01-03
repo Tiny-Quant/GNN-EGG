@@ -3,7 +3,9 @@
 
 # torch 
 import torch 
-from torch.multiprocessing import Pool  
+import torch.multiprocessing as mp 
+from torch.multiprocessing import Pool
+mp.set_start_method('spawn', force=True)
 
 # %%
 
