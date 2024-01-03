@@ -1,6 +1,11 @@
 # %%
+# Adds the repo directory to the import paths.
+import sys
+from os.path import dirname, abspath
+sys.path.append(dirname(dirname(abspath(__file__))))
+print(sys.path)
 
-from egg_hard_nx import EggHardNx
+from egg_models.egg_hard_nx import EggHardNx
 
 # %%
 if __name__ == '__main__':
@@ -17,4 +22,4 @@ if __name__ == '__main__':
         batch_size=BATCH_SIZE
     )
 
-    generator()
+    print(generator())

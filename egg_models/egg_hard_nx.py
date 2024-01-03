@@ -10,8 +10,8 @@ from pygmtools.utils import dense_to_sparse
 pygm.set_backend('pytorch')
 
 # within 
-from egg_components import generic_layers
-from egg_components.edge_type_assigner import assign_edge_type_par
+from egg_models import generic_layers
+from utils.edge_type_assigner import assign_edge_type_par
 
 # %%
 class EggHardNx(nn.Module):
