@@ -42,8 +42,9 @@ class PredLoss(nn.Module):
 
 # %%
 class EditLoss(nn.Module):
-    def __init__(self):
+    def __init__(self, obs: list):
         super(EditLoss, self).__init__()
+        self.obs = obs
 
     @staticmethod
     def node_strict_type_match(node_dict_1, node_dict_2): 
@@ -87,15 +88,15 @@ class EditLoss(nn.Module):
         
         return torch.stack(distances).squeeze()
 
-    def forward(self, graph_list, obs):
+    def forward(self, graph_list):
         with torch.no_grad():
             detached_graph_list = [graph.detach().cpu()
                                    for graph in graph_list]
             with Pool() as pool:
                 nx_graph_list = pool.map(nuclei_to_nx, detached_graph_list)
-            nx_graph_list = nx_graph_list * len(obs) #padded computation.
+            nx_graph_list = nx_graph_list * len(self.obs) #padded computation.
 
-            obs_padded = [ob for ob in obs for _ in range(len(graph_list))]
+            obs_padded = [ob for ob in self.obs 
+                          for _ in range(len(graph_list))]
 
             return EditLoss.pairwise_edit_distance(nx_graph_list, obs_padded)
-            
