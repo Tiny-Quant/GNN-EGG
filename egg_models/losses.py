@@ -1,7 +1,20 @@
 
 # %% Dependencies:
+from typing import List
+from functools import partial
+
+import numpy as np 
+
+import multiprocessing as mp 
+from multiprocessing import Pool
+
+import networkx as nx
+from networkx import graph_edit_distance
+
 import torch 
 import torch.nn as nn 
+
+from utils.ceograph import NucleiData, nuclei_to_nx
 
 # %%
 class PredLoss(nn.Module):
@@ -26,3 +39,63 @@ class PredLoss(nn.Module):
         ])
 
         return pred_losses
+
+# %%
+class EditLoss(nn.Module):
+    def __init__(self):
+        super(EditLoss, self).__init__()
+
+    @staticmethod
+    def node_strict_type_match(node_dict_1, node_dict_2): 
+
+        # Quick return false if features names don't match. 
+        if not(set(node_dict_1) & set(node_dict_2)):
+            return 0
+
+        if node_dict_1['node_features'][0] == node_dict_2['node_features'][0]:
+            return 1
+
+        else: 
+            return 0 
+
+    @staticmethod
+    def single_edit_distance(ob: nx.DiGraph, G: nx.DiGraph,
+                            node_match=None):
+        node_match = node_match or EditLoss.node_strict_type_match
+
+        dist = graph_edit_distance(
+            ob, G, 
+            node_match=node_match, 
+            node_del_cost=lambda x: 0, 
+            edge_del_cost=lambda x: 0,
+            upper_bound=50, 
+            timeout=60
+        )
+
+        if dist is None: 
+            return torch.tensor([50.0])
+        else:
+            return torch.tensor([dist])
+    
+    @staticmethod
+    def pairwise_edit_distance(Gs: List[nx.DiGraph], obs: List[nx.DiGraph], 
+                            dist_fn=None):
+        dist_fn = dist_fn or EditLoss.node_strict_type_match
+
+        with Pool() as pool:
+            distances = pool.starmap(dist_fn, zip(Gs, obs))
+        
+        return torch.stack(distances).squeeze()
+
+    def forward(self, graph_list, obs):
+        with torch.no_grad():
+            detached_graph_list = [graph.detach().cpu()
+                                   for graph in graph_list]
+            with Pool() as pool:
+                nx_graph_list = pool.map(nuclei_to_nx, detached_graph_list)
+            nx_graph_list = nx_graph_list * len(obs) #padded computation.
+
+            obs_padded = [ob for ob in obs for _ in range(len(graph_list))]
+
+            return EditLoss.pairwise_edit_distance(nx_graph_list, obs_padded)
+            
