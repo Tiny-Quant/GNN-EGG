@@ -5,7 +5,6 @@
 import torch 
 import torch.multiprocessing as mp 
 from torch.multiprocessing import Pool
-mp.set_start_method('spawn', force=True)
 
 # %%
 
@@ -46,10 +45,20 @@ def assign_edge_type_par(A, C_x):
     C_x - Batched node cell types : tensor [batch, #nodes]
     '''
     with torch.no_grad():
+        mp.set_start_method('spawn', force=True)
         with Pool() as pool: 
             e_c = torch.stack(
                 pool.starmap(get_edge_type_app, 
                             zip(A.unbind(), C_x.unbind()))
             ) 
             
+    return e_c
+
+def assign_edge_type(A, C_x):
+    with torch.no_grad():
+        e_c = torch.stack(
+            [get_edge_type_app(A, C_x) for (A, C_x) in 
+             zip(A.unbind(), C_x.unbind())]
+        )
+    
     return e_c
