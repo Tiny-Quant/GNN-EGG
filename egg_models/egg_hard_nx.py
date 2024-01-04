@@ -16,7 +16,7 @@ from utils.edge_type_assigner import assign_edge_type, assign_edge_type_par
 # %%
 class EggHardNx(nn.Module):
     def __init__(self, node_size, cont_node_feat, node_types, cont_edge_feat,
-                 batch_size=1, parallel=False): 
+                 batch_size=1): 
         super(EggHardNx, self).__init__()
         self.node_size = node_size
         self.cont_node_feat = cont_node_feat       
@@ -40,7 +40,7 @@ class EggHardNx(nn.Module):
 
         self.device_param = nn.Parameter(torch.empty(0))
     
-    def forward(self):
+    def forward(self, parallel=False):
         X = self.ContNodeFeats()
 
         C_x, C_x_logLik = self.DisNodeFeats()
@@ -52,7 +52,7 @@ class EggHardNx(nn.Module):
         E = self.ContEdgeFeats()
         E = E.narrow(dim=1, start=0, length=A.shape[2]) # undo layer padding.
 
-        if self.parallel: 
+        if parallel: 
             # Parallel always returns to the cpu for some reason.
             C_e = assign_edge_type_par(A, C_x).to(self.device_param.device)
         else: 
