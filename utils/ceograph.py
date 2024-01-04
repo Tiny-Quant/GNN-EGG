@@ -1,3 +1,4 @@
+from typing import Optional
 import numpy as np
 import networkx as nx
 
@@ -8,6 +9,7 @@ import torch.nn.functional as F
 import torch_geometric
 from torch_geometric.nn import GCNConv, NNConv, global_max_pool
 from torch_geometric.data import Data
+from torch_geometric.utils import remove_isolated_nodes
 from torch_scatter import scatter_mean
 
 class EdgeNN(nn.Module):
@@ -162,3 +164,19 @@ def nuclei_to_nx(data: NucleiData) -> nx.DiGraph:
         G.add_edge(src, tgt, edge_features=data.edge_attr[i].numpy())
 
     return G
+
+def clear_iso_nodes(example: NucleiData, 
+                    num_nodes: Optional[int] = None) -> NucleiData: 
+    edge_index, edge_attr, mask = (
+        remove_isolated_nodes(example.edge_index, 
+                              example.edge_attr, 
+                              num_nodes=num_nodes)
+    )
+    example_masked = NucleiData(
+        x = example.x[mask], 
+        edge_index = edge_index, 
+        cell_type = example.cell_type[mask], 
+        edge_attr = edge_attr,
+    )
+
+    return example_masked
