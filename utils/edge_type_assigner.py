@@ -29,7 +29,8 @@ def get_edge_type(edge, cell_type):
                    "4-1": 18, "4-2": 19, "4-3": 20, "4-4": 21, "4-5": 22, "4-6": 23,
                    "5-1": 24, "5-2": 25, "5-3": 26, "5-4": 27, "5-5": 28, "5-6": 29,
                    "6-1": 30, "6-2": 31, "6-3": 32, "6-4": 33, "6-5": 34, "6-6": 35}
-    return mapping['{}-{}'.format(cell_type[edge[0]], cell_type[edge[1]])]
+    return mapping['{}-{}'.format(cell_type[edge[0]].item(), 
+                                  cell_type[edge[1]].item())]
 
 def get_edge_type_app(A, C_x):
     edges = list(zip(A.long()[0], A.long()[1]))
