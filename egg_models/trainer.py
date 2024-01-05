@@ -1,7 +1,10 @@
 # %% Dependencies:
+import math 
+
 import torch 
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
+from torch.profiler import profile, ProfilerActivity
 
 from tqdm import tqdm
 
@@ -24,7 +27,8 @@ class Trainer:
         self.target = target
         self.obs = obs
 
-        self.writer = SummaryWriter(tensorboard_path)
+        self.tensorboard_path = tensorboard_path
+        self.writer = SummaryWriter(self.tensorboard_path)
         self.checkpoint_path = checkpoint_path
 
     def train_one_epoch(self, lambda_1=1, lambda_2=1, lambda_3=1):
@@ -73,9 +77,21 @@ class Trainer:
 
         return loss.item(), pred_loss.item(), edit_loss.item(), edge_pen.item()
 
-    def train(self, num_epochs=1, save_every=1):
+    def train(self, num_epochs=1, save_every=1, profile_run=False, profile_dir=""):
+
         for epoch in tqdm(range(num_epochs), desc="Training"):
-            total_loss, pred_loss, edit_loss, edge_pen = self.train_one_epoch()
+
+            if profile_run and epoch == math.ceil(num_epochs / 2):
+                with profile( 
+                    activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], 
+                    profile_memory=True, with_stack=True
+                ) as prof: 
+                    total_loss, pred_loss, edit_loss, edge_pen = self.train_one_epoch()
+                with open(profile_dir + "/" + "profile.txt"):
+                    print(prof.key_averages().table(sort_by="gpu_time_total"))
+
+            else: 
+                total_loss, pred_loss, edit_loss, edge_pen = self.train_one_epoch()
 
             self.writer.add_scalar("Total Loss", total_loss, epoch)
             self.writer.add_scalar("Prediction Loss", pred_loss, epoch)

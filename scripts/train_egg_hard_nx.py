@@ -42,9 +42,11 @@ if __name__ == '__main__':
     max_nodes = config_data["max_nodes"]
     target_name = config_data["target_name"]
     obs_path = config_data["obs_path"]
-    tensorboard_path = config_data["tensorboard_path"]
-    checkpoint_path = config_data["checkpoint_path"]
+    tensorboard_path = repo_dir + config_data["tensorboard_path"]
+    checkpoint_path = repo_dir + config_data["checkpoint_path"]
     save_every = config_data["save_every"]
+    profile_run = config_data["profile_run"]
+    profile_dir = repo_dir + config_data["profile_dir"]
 
     device = torch.device(0)
 
@@ -90,4 +92,5 @@ if __name__ == '__main__':
     trainer = Trainer(generator, explainee, optimizer, criterion, target, obs, 
                       tensorboard_path, checkpoint_path)
 
-    trainer.train(num_epochs=num_epochs, save_every=save_every)
+    trainer.train(num_epochs=num_epochs, save_every=save_every, 
+                  profile_run=profile_run, profile_dir=profile_dir)
