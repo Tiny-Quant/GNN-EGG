@@ -1,6 +1,9 @@
 # %% Dependencies:
 import torch 
 import torch.nn as nn
+from torch.utils.tensorboard import SummaryWriter
+
+from tqdm import tqdm
 
 from utils.ceograph import NucleiData, clear_iso_nodes
 from egg_models.losses import PredLoss, EditLoss
@@ -11,7 +14,8 @@ class Trainer:
                  explainee: nn.Module, 
                  optimizer: torch.optim.Optimizer, 
                  criterion: callable, 
-                 target, obs: list):
+                 target, obs: list, 
+                 tensorboard_path, checkpoint_path):
         self.generator = generator
         self.explainee = explainee
         self.criterion = criterion
@@ -19,6 +23,8 @@ class Trainer:
 
         self.target = target
         self.obs = obs
+
+        self.writer = SummaryWriter(tensorboard_path)
 
     def train_one_epoch(self, lambda_1=1, lambda_2=1, lambda_3=1):
 
@@ -64,12 +70,23 @@ class Trainer:
         loss.backward()
         self.optimizer.step()
 
-        print(loss.item())
+        return loss.item(), pred_loss.item(), edit_loss.item(), edge_pen.item()
 
-        return loss.item()
+    def train(self, num_epochs=1, save_every=1):
+        for epoch in tqdm(range(num_epochs), desc="Training"):
+            total_loss, pred_loss, edit_loss, edge_pen = self.train_one_epoch()
 
-    def train(self, num_epochs=1):
-        for epoch in range(num_epochs):
-            self.train_one_epoch()
+            self.writer.add_scalar("Total Loss", total_loss, epoch)
+            self.writer.add_scalar("Prediction Loss", pred_loss, epoch)
+            self.writer.add_scalar("Edit Loss", edit_loss, epoch)
+            self.writer.add_scalar("Edge Penalty", edge_pen, epoch)
 
-
+            if epoch % save_every == 0:
+                checkpoint = {
+                    'epoch': epoch,
+                    'generator_state_dict': self.generator.state_dict(),
+                    'optimizer_state_dict': self.optimizer.state_dict(),
+                    'total_loss': total_loss,
+                }
+                checkpoint_filename = f'{self.checkpoint_path}/checkpoint_epoch_{epoch}.pt'
+                torch.save(checkpoint, checkpoint_filename)

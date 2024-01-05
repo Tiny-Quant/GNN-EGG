@@ -1,9 +1,12 @@
 {
-    "num_epochs": 1,
+    "num_epochs": 5,
     "learning_rate": 0.0001,
     "optimizer_name": "Adam",
     "batch_size": 1,
     "max_nodes": 50,
     "target_name": "ad",
-    "obs_path": "data/slides/LUDA/ad_train_nx_100.pkl"
+    "obs_path": "data/slides/LUDA/ad_train_nx_100.pkl", 
+    "tensorboard_path": "experiments/egg_hard_nx/exp1/tensorboard", 
+    "check_point_path": "experiments/egg_hard_nx/exp1/checkpoints", 
+    "save_every": 1
 }

@@ -42,6 +42,9 @@ if __name__ == '__main__':
     max_nodes = config_data["max_nodes"]
     target_name = config_data["target_name"]
     obs_path = config_data["obs_path"]
+    tensorboard_path = config_data["tensorboard_path"]
+    check_point_path = config_data["check_point_path"]
+    save_every = config_data["save_every"]
 
     device = torch.device(0)
 
@@ -84,6 +87,7 @@ if __name__ == '__main__':
 
     criterion = nn.BCELoss()
 
-    trainer = Trainer(generator, explainee, optimizer, criterion, target, obs)
+    trainer = Trainer(generator, explainee, optimizer, criterion, target, obs, 
+                      tensorboard_path, checkpoint_path)
 
-    trainer.train(num_epochs=num_epochs)
+    trainer.train(num_epochs=num_epochs, save_every=save_every)
