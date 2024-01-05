@@ -1,16 +1,20 @@
 # %%
 
 import torch
+import torch.nn as nn 
+import torch.optim
+torch.autograd.set_detect_anomaly(True)
 
 # Adds the repo directory to the import paths.
 import sys
 from os.path import dirname, abspath
 repo_dir = dirname(dirname(abspath(__file__)))
 sys.path.append(repo_dir)
-print(sys.path)
+import pickle
 
 from egg_models.egg_hard_nx import EggHardNx
 from egg_models.losses import PredLoss
+from egg_models.trainer import Trainer
 from utils import ceograph
 
 # %%
@@ -20,9 +24,14 @@ if __name__ == '__main__':
     CONT_NODE_FEATS = 11
     CELL_TYPES = 5
     CONT_EDGE_FEAT = 2
-    BATCH_SIZE = 1
+    BATCH_SIZE = 10
 
     device = torch.device(0)
+
+    target = torch.tensor([1.0, 0.0]).to(device)
+    path = repo_dir + "/" + "data/slides/LUDA/ad_train_nx_100.pkl" 
+    with open(path, 'rb') as f:
+        obs = pickle.load(f)
 
     explainee = ceograph.NucleiNet(CONT_NODE_FEATS, CONT_EDGE_FEAT, batch=False)
     explainee.to(device)
@@ -36,16 +45,14 @@ if __name__ == '__main__':
     generator = EggHardNx(
         node_size=MAX_NODES, cont_node_feat=CONT_NODE_FEATS, 
         node_types=CELL_TYPES, cont_edge_feat=CONT_EDGE_FEAT, 
-        batch_size=BATCH_SIZE
+        batch_size=BATCH_SIZE, 
     )
     generator.to(device)
 
-    X, C_x, A, E, C_x_logLik, A_logLik = generator()
+    optimizer = torch.optim.Adam(generator.parameters())    
 
-    graph_list = [
-        ceograph.NucleiData(X, C_x, A, E) for (X, C_x, A, E) in 
-        zip(X.unbind(), C_x.unbind(), A.unbind(), E.unbind())
-    ]
+    criterion = nn.BCELoss()
 
-    explainee(graph_list[0])
+    trainer = Trainer(generator, explainee, optimizer, criterion, target, obs)
 
+    trainer.train()
