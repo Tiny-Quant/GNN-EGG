@@ -57,8 +57,8 @@ class CatFeatVector(nn.Module):
         dist = td.Categorical(logits=self.logits)
         sample = dist.sample(
             (self.batch_size, self.num_obs)
-        ).squeeze(2) # sample adds an extra dim.
-        logLik = dist.log_prob(sample).sum(dim=1)
+        ) # sample adds an extra dim.
+        logLik = dist.log_prob(sample).sum(dim=(1, 2))
 
         return sample, logLik
 
@@ -86,5 +86,5 @@ class BinaryMatrix(nn.Module):
     def forward(self):
         dist = td.Bernoulli(logits=self.logits)
         sample = dist.sample([self.batch_size])
-        logLik = dist.log_prob(sample).sum(dim=(1,2))
+        logLik = dist.log_prob(sample).sum(dim=(1, 2))
         return sample, logLik
