@@ -43,7 +43,7 @@ if __name__ == '__main__':
     target_name = config_data["target_name"]
     obs_path = config_data["obs_path"]
     tensorboard_path = config_data["tensorboard_path"]
-    check_point_path = config_data["check_point_path"]
+    checkpoint_path = config_data["checkpoint_path"]
     save_every = config_data["save_every"]
 
     device = torch.device(0)
