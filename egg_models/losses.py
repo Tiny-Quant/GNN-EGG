@@ -81,7 +81,7 @@ class EditLoss(nn.Module):
     @staticmethod
     def pairwise_edit_distance(Gs: List[nx.DiGraph], obs: List[nx.DiGraph], 
                             dist_fn=None):
-        dist_fn = dist_fn or EditLoss.node_strict_type_match
+        dist_fn = dist_fn or EditLoss.single_edit_distance
 
         with Pool() as pool:
             distances = pool.starmap(dist_fn, zip(Gs, obs))
