@@ -25,6 +25,7 @@ class Trainer:
         self.obs = obs
 
         self.writer = SummaryWriter(tensorboard_path)
+        self.checkpoint_path = checkpoint_path
 
     def train_one_epoch(self, lambda_1=1, lambda_2=1, lambda_3=1):
 
