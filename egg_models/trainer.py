@@ -49,7 +49,8 @@ class Trainer:
                      pred_rewards @ -A_logLik) / self.generator.batch_size
 
         edit_loss_fn = EditLoss(self.obs)
-        edit_dists = edit_loss_fn(graph_list) / len(self.obs)
+        device = self.generator.device_param.device
+        edit_dists = edit_loss_fn(graph_list).to(device) / len(self.obs)
         edit_rewards = 1 / edit_dists + 1 # smoother. 
         edit_loss = (edit_rewards @ -C_x_logLik.repeat(len(self.obs)) + 
                      edit_rewards @ -A_logLik.repeat(len(self.obs)))
@@ -62,6 +63,8 @@ class Trainer:
 
         loss.backward()
         self.optimizer.step()
+
+        print(loss.item())
 
         return loss.item()
 
