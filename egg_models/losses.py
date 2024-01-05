@@ -31,7 +31,8 @@ class PredLoss(nn.Module):
             return self.criterion(explainee_pred, self.target)
         
         except Exception as e:
-            return self.criterion(torch.tensor([0.5, 0.5]), self.target)
+            coin_flip = torch.tensor([0.5, 0.5]).to(self.target.device)
+            return self.criterion(coin_flip, self.target)
 
     def forward(self, examples):
         pred_losses = torch.stack([
