@@ -44,7 +44,7 @@ class EggHardNx(nn.Module):
         X = self.ContNodeFeats()
 
         C_x, C_x_logLik = self.DisNodeFeats()
-        C_x += 1 # ceograph cats are 1 indexed.
+        C_x = C_x + 1 # ceograph cats are 1 indexed.
 
         A, A_logLik = self.AdjacencyMatrix()
         A = dense_to_sparse(A)[0].transpose(1, 2)
