@@ -29,9 +29,13 @@ if __name__ == '__main__':
         type=str, 
         default="config.json"
     )
+    parser.add_argument(
+        '--resume_path', 
+        type=str
+    )
     opt = parser.parse_args()
 
-    config_path = repo_dir + "/" + opt.path_to_json_config
+    config_path = opt.path_to_json_config
     with open(config_path) as f:
         config_data = json.load(f)
 
@@ -42,11 +46,11 @@ if __name__ == '__main__':
     max_nodes = config_data["max_nodes"]
     target_name = config_data["target_name"]
     obs_path = config_data["obs_path"]
-    tensorboard_path = repo_dir + config_data["tensorboard_path"]
-    checkpoint_path = repo_dir + config_data["checkpoint_path"]
+    tensorboard_path = config_data["tensorboard_path"]
+    checkpoint_path = config_data["checkpoint_path"]
     save_every = config_data["save_every"]
     profile_run = config_data["profile_run"]
-    profile_dir = repo_dir + config_data["profile_dir"]
+    profile_dir = config_data["profile_dir"]
 
     device = torch.device(0)
 
@@ -64,7 +68,7 @@ if __name__ == '__main__':
     explainee = ceograph.NucleiNet(CONT_NODE_FEATS, CONT_EDGE_FEAT, batch=False)
     explainee.to(device)
     explainee.load_state_dict(torch.load(
-            repo_dir + "/data/explainees/ceograph/epoch_263.pt",
+            "data/explainees/ceograph/epoch_263.pt",
             map_location=device
         )
     )
@@ -93,4 +97,5 @@ if __name__ == '__main__':
                       tensorboard_path, checkpoint_path)
 
     trainer.train(num_epochs=num_epochs, save_every=save_every, 
+                  resume_path=opt.resume_path, 
                   profile_run=profile_run, profile_dir=profile_dir)

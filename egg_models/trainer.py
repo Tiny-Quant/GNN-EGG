@@ -77,18 +77,36 @@ class Trainer:
 
         return loss.item(), pred_loss.item(), edit_loss.item(), edge_pen.item()
 
-    def train(self, num_epochs=1, save_every=1, profile_run=False, profile_dir=""):
+    def train(self, num_epochs=1, save_every=1, 
+              resume_path=None, 
+              profile_run=False, profile_dir=""):
 
-        for epoch in tqdm(range(num_epochs), desc="Training"):
+        if resume_path is not None:
+            last_checkpoint = torch.load(resume_path)
+            self.generator.load_state_dict(
+                last_checkpoint['generator_state_dict']
+            )
+            self.optimizer.load_state_dict(
+                last_checkpoint['optimizer_state_dict']
+            )
+            start_epoch = last_checkpoint['epoch'] + 1
+        else: 
+            start_epoch = 0
 
-            if profile_run and epoch == math.ceil(num_epochs / 2):
+        total_epochs = start_epoch + num_epochs 
+        for epoch in tqdm(range(start_epoch, total_epochs), desc="Training"):
+            
+            if profile_run and epoch == math.ceil((start_epoch + total_epochs) / 2):
                 with profile( 
                     activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA], 
-                    profile_memory=True, with_stack=True
+                    profile_memory=True, with_stack=True,
+                    # ref: https://github.com/pytorch/pytorch/issues/100253
+                    experimental_config=torch._C._profiler._ExperimentalConfig(verbose=True)
                 ) as prof: 
                     total_loss, pred_loss, edit_loss, edge_pen = self.train_one_epoch()
-                with open(profile_dir + "/" + "profile.txt"):
-                    print(prof.key_averages().table(sort_by="gpu_time_total"))
+                with open(profile_dir + "/" + "profile.txt", "a+") as f:
+                    print(prof.key_averages().table(sort_by="self_cuda_time_total"), 
+                          file=f)
 
             else: 
                 total_loss, pred_loss, edit_loss, edge_pen = self.train_one_epoch()
