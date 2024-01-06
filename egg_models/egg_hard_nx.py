@@ -11,7 +11,7 @@ pygm.set_backend('pytorch')
 
 # within 
 from egg_models import generic_layers
-from utils.edge_type_assigner import assign_edge_type, assign_edge_type_par
+from utils.ceograph import assign_edge_type, assign_edge_type_par
 
 # %%
 class EggHardNx(nn.Module):
