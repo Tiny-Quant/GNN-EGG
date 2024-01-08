@@ -38,7 +38,7 @@ class CatFeatVector(nn.Module):
     Generates a discrete feature vector sampled from a categorical distribution.
     The parameters of the distribution defined to be trainable based on the logLik.
 
-    returns a non-differentiable tensor of size [batch, obs] and a 
+    returns a non-differentiable tensor of size [batch, obs, 1] and a 
     differentiable logLik tensor of size [batch].
     '''
     def __init__(self, batch_size, num_obs, num_cats):
