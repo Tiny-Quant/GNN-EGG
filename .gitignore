@@ -4,6 +4,8 @@ egg-env-38/
 
 .ipynb_checkpoints
 
+.vscode/
+
 data/
 
 .pkgs/
