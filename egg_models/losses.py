@@ -13,6 +13,9 @@ from networkx import graph_edit_distance
 
 import torch 
 import torch.nn as nn 
+import pygmtools as pygm
+from pygmtools.utils import build_aff_mat, gaussian_aff_fn
+pygm.set_backend('pytorch')
 
 from utils.ceograph import NucleiData, nuclei_to_nx
 
@@ -101,3 +104,34 @@ class EditLoss(nn.Module):
                           for _ in range(len(graph_list))]
 
             return EditLoss.pairwise_edit_distance(nx_graph_list, obs_padded)
+
+# %%
+class MatchingLoss(nn.Module):
+    def __init__(self, obs: list):
+        self.obs_node_matrix = obs[0]
+        self.obs_edge_matrix = obs[1]
+        self.obs_adj_matrix = obs[2]
+
+    def forward(self, X, C_x, A, E):
+        # X [b, nodes, cont_feat], C_x[b, nodes] 
+        # A[b, 2, edges], E[B, edges, feats]
+
+        # cat X and C_x -> [b, nodes, feat + 1]
+        node_matrix = torch.cat(
+            X, C_x.unsqueeze(-1), dim=-1
+        ) 
+
+        aff_matrix = build_aff_mat(
+            node_feat1=node_matrix, 
+            edge_feat1=E, 
+            connectivity1=A.transpose(1, 2), 
+            node_feat2=self.obs_node_matrix, 
+            edge_feat2=self.obs_edge_matrix, 
+            connectivity2=self.obs_adj_matrix, 
+            node_aff_fn=gaussian_aff_fn, 
+            edge_aff_fn=gaussian_aff_fn,
+        )
+
+        # matching_matrix = 
+        
+
