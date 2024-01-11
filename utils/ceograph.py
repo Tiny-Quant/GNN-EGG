@@ -196,8 +196,8 @@ def assign_edge_type(A, C_x):
     return e_c
 
 
-def load_model(path, device=torch.device(0)): 
-    model = NucleiNet(11, 2, batch=False)
+def load_model(path, device=torch.device(0), batched=False): 
+    model = NucleiNet(11, 2, batch=batched)
     model.to(device)
     model.load_state_dict(torch.load(
             path, 
