@@ -31,7 +31,7 @@ class Trainer:
         self.writer = SummaryWriter(self.tensorboard_path)
         self.checkpoint_path = checkpoint_path
 
-    def train_one_epoch(self, lambda_1=1, lambda_2=1, lambda_3=1):
+    def train_one_epoch(self, lambda_1=1, lambda_2=1, lambda_3=100):
 
         self.optimizer.zero_grad()
         # X[b, nodes, feat]; C_x[b, nodes]; A[b, 2, edges];
@@ -55,7 +55,7 @@ class Trainer:
         pred_loss_fn = PredLoss(self.target, self.criterion, self.explainee)
         pred_losses = pred_loss_fn(graph_list) 
         pred_rewards = 1 / pred_losses + 1e-4 # avoid zero division.
-        pred_loss = (pred_losses.sum() + 
+        pred_loss = (pred_losses.sum() * 100 + 
                      pred_rewards @ -C_x_logLik + 
                      pred_rewards @ -A_logLik) / self.generator.batch_size
 
@@ -75,7 +75,13 @@ class Trainer:
         loss.backward()
         self.optimizer.step()
 
-        return loss.item(), pred_loss.item(), edit_loss.item(), edge_pen.item()
+        # Additional metrics.
+        with torch.no_grad():
+            mean_edit_dist = edit_dists.mean()
+            mean_pred_loss = pred_loss.mean()
+        
+        return [loss.item(), pred_loss.item(), edit_loss.item(), edge_pen.item(), 
+                mean_edit_dist.item(), mean_pred_loss.item()]
 
     def train(self, num_epochs=1, save_every=1, 
               resume_path=None, 
@@ -103,17 +109,19 @@ class Trainer:
                     # ref: https://github.com/pytorch/pytorch/issues/100253
                     experimental_config=torch._C._profiler._ExperimentalConfig(verbose=True)
                 ) as prof: 
-                    total_loss, pred_loss, edit_loss, edge_pen = self.train_one_epoch()
+                    total_loss, pred_loss, edit_loss, edge_pen, mean_edit_dist, mean_pred_loss = self.train_one_epoch()
                 with open(profile_dir + "/" + "profile.txt", "a+") as f:
                     print(prof.key_averages().table(sort_by="self_cuda_time_total"), 
                           file=f)
 
             else: 
-                total_loss, pred_loss, edit_loss, edge_pen = self.train_one_epoch()
+                total_loss, pred_loss, edit_loss, edge_pen, mean_edit_dist, mean_pred_loss = self.train_one_epoch()
 
             self.writer.add_scalar("Total Loss", total_loss, epoch)
             self.writer.add_scalar("Prediction Loss", pred_loss, epoch)
+            self.writer.add_scalar("Mean Prediction Loss", mean_pred_loss, epoch)
             self.writer.add_scalar("Edit Loss", edit_loss, epoch)
+            self.writer.add_scalar("Mean Edit Distance", mean_edit_dist, epoch)
             self.writer.add_scalar("Edge Penalty", edge_pen, epoch)
 
             if epoch % save_every == 0:

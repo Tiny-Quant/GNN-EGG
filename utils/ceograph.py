@@ -226,6 +226,9 @@ def nuclei_to_nx(data: NucleiData) -> nx.DiGraph:
 
 def clear_iso_nodes(example: NucleiData, 
                     num_nodes: Optional[int] = None) -> NucleiData: 
+    '''
+    Should not lose grad - checked in debugging.ipynb
+    '''
     edge_index, edge_attr, mask = (
         remove_isolated_nodes(example.edge_index, 
                               example.edge_attr, 
