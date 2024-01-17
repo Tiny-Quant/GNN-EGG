@@ -63,7 +63,7 @@ if __name__ == '__main__':
         obs = pickle.load(f)
 
     CONT_NODE_FEATS = 11
-    CELL_TYPES = 5
+    CELL_TYPES = 6
     CONT_EDGE_FEAT = 2
     explainee = ceograph.NucleiNet(CONT_NODE_FEATS, CONT_EDGE_FEAT, batch=False)
     explainee.to(device)
