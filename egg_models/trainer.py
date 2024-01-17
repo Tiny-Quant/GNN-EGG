@@ -55,7 +55,7 @@ class Trainer:
         pred_loss_fn = PredLoss(self.target, self.criterion, self.explainee)
         pred_losses = pred_loss_fn(graph_list) 
         pred_rewards = 1 / pred_losses + 1e-4 # avoid zero division.
-        pred_loss = (pred_losses.sum() * 100 + 
+        pred_loss = (pred_losses.sum() * 1e4 + 
                      pred_rewards @ -C_x_logLik + 
                      pred_rewards @ -A_logLik) / self.generator.batch_size
 
