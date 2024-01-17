@@ -7,8 +7,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
-sys.path.append("../ceograph/")
-from ceograph import NucleiData
+# import ceograph
 
 def color_cell_graph(graph, seed=100):
     network = torch_geometric.utils.to_networkx(graph)
