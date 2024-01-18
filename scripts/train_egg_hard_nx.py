@@ -50,7 +50,7 @@ if __name__ == '__main__':
     checkpoint_path = config_data["checkpoint_path"]
     save_every = config_data["save_every"]
     profile_run = config_data["profile_run"]
-    profile_dir = config_data["profile_dir"]
+    profile_dir = None #config_data["profile_dir"]
 
     device = torch.device(0)
 
