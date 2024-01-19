@@ -47,14 +47,22 @@ class CatFeatVector(nn.Module):
         self.num_obs = num_obs
         self.num_cats = num_cats
 
-        self.logits = nn.Parameter(
-            nn.init.xavier_normal_( # Glorot initialization. 
-                torch.empty((1, self.num_cats))
+        # self.logits = nn.Parameter(
+        #     nn.init.xavier_normal_( # Glorot initialization. 
+        #         torch.empty((1, self.num_cats))
+        #     )
+        # )
+
+        self.probs = nn.Parameter(
+            nn.init.uniform_(
+                torch.empty((1, self.num_cats)), 
+                0.0, 1.0
             )
         )
 
     def forward(self):
-        dist = td.Categorical(logits=self.logits)
+        # dist = td.Categorical(logits=self.logits)
+        dist = td.Categorical(probs=torch.softmax(self.probs, dim=0))
         sample = dist.sample(
             (self.batch_size, self.num_obs)
         ) # sample adds an extra dim.
@@ -77,14 +85,22 @@ class BinaryMatrix(nn.Module):
         self.num_rows = num_rows
         self.num_cols = num_cols
 
-        self.logits = nn.Parameter(
-            nn.init.xavier_normal_( # glorot initialization. 
-                torch.empty((self.num_rows, self.num_cols)).fill_diagonal_(0)
-            )
+        # self.logits = nn.Parameter(
+        #     nn.init.xavier_normal_( # glorot initialization. 
+        #         torch.empty((self.num_rows, self.num_cols))
+        #     ).fill_diagonal_(-1e8)
+        # )
+
+        self.probs = nn.Parameter(
+            nn.init.uniform_(
+                torch.empty((self.num_rows, self.num_cols)),
+                0.0, 1.0
+            ).fill_diagonal_(0.0) # no self-loops.
         )
 
     def forward(self):
-        dist = td.Bernoulli(logits=self.logits)
+        # dist = td.Bernoulli(logits=self.logits)
+        dist = td.Bernoulli(probs=self.probs.clamp(0.0, 1.0))
         sample = dist.sample([self.batch_size])
         logLik = dist.log_prob(sample).sum(dim=(1, 2))
         return sample, logLik

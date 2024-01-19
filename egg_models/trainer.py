@@ -68,7 +68,7 @@ class Trainer:
         #edit_loss = (edit_rewards @ -C_x_logLik.repeat(len(self.obs)) + 
                      #edit_rewards @ -A_logLik.repeat(len(self.obs)))
 
-        edge_pen = torch.norm(self.generator.AdjacencyMatrix.logits, p=2)
+        edge_pen = torch.norm(self.generator.AdjacencyMatrix.probs, p=1)
 
         loss = (lambda_1 * pred_loss +
                 # lambda_2 * edit_loss + 
