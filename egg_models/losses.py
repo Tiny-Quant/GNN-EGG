@@ -34,6 +34,7 @@ class PredLoss(nn.Module):
             return self.criterion(explainee_pred, self.target)
         
         except Exception as e:
+            # To-do: potential bug - how to get gradient in failed pred case?
             coin_flip = torch.tensor([0.5, 0.5]).to(self.target.device)
             return self.criterion(coin_flip, self.target)
 
