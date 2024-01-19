@@ -79,7 +79,7 @@ class BinaryMatrix(nn.Module):
 
         self.logits = nn.Parameter(
             nn.init.xavier_normal_( # glorot initialization. 
-                torch.empty((self.num_rows, self.num_cols))
+                torch.empty((self.num_rows, self.num_cols)).fill_diagonal_(0)
             )
         )
 
