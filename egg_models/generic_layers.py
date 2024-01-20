@@ -5,7 +5,7 @@
 import torch 
 import torch.distributions as td 
 import torch.nn as nn 
-from torch.multiprocessing import Pool  
+# from torch.multiprocessing import Pool  
 
 # %% 
 class ContFeatMatrix(nn.Module):
@@ -71,6 +71,34 @@ class CatFeatVector(nn.Module):
         return sample, logLik
 
 # %%
+class ConcreteLayer(nn.Module):
+    def __init__(self, batch_size, num_obs, num_cats, temp):
+        super(ConcreteLayer, self).__init__()
+
+        self.batch_size = batch_size
+        self.num_obs = num_obs
+        self.num_cats = num_cats
+        self.temp = torch.tensor(temp)
+
+        self.probs = nn.Parameter(
+            nn.init.uniform_(
+                torch.empty((1, self.num_cats)), 
+                0.0, 1.0
+            )
+        )
+    
+    def forward(self):
+        dist = td.RelaxedOneHotCategorical(
+            self.temp, probs=torch.softmax(self.probs, dim=1)
+        )
+        sample = dist.rsample(
+            (self.batch_size, self.num_obs)
+        )
+        logLik = dist.log_prob(sample).sum(dim=(1))
+
+        return sample, logLik
+
+# %%
 class BinaryMatrix(nn.Module):
     '''
     Generates a matrix where each entry is sampled from an independent 
@@ -102,5 +130,27 @@ class BinaryMatrix(nn.Module):
         # dist = td.Bernoulli(logits=self.logits)
         dist = td.Bernoulli(probs=self.probs.clamp(0.0, 1.0))
         sample = dist.sample([self.batch_size])
+        logLik = dist.log_prob(sample).sum(dim=(1, 2))
+        return sample, logLik
+
+# %%
+class BinaryConcrete(nn.Module):
+    def __init__(self, batch_size, num_rows, num_cols, temp):
+        super(BinaryConcrete, self).__init__()
+        self.batch_size = batch_size
+        self.num_rows = num_rows
+        self.num_cols = num_cols
+        self.temp = torch.tensor(temp)
+
+        self.probs = nn.Parameter(
+            nn.init.uniform_(
+                torch.empty((self.num_rows, self.num_cols)),
+                0.0, 1.0
+            ).fill_diagonal_(0.0) # no self-loops.
+        )
+
+    def forward(self):
+        dist = td.RelaxedBernoulli(self.temp, probs=self.probs.clamp(0.0, 1.0))
+        sample = dist.rsample([self.batch_size])
         logLik = dist.log_prob(sample).sum(dim=(1, 2))
         return sample, logLik
