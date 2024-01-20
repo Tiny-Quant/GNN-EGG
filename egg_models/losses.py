@@ -13,8 +13,12 @@ from networkx import graph_edit_distance
 
 import torch 
 import torch.nn as nn 
+
+import torch_geometric as pyg
+from torch_geometric.data import Data 
+
 import pygmtools as pygm
-from pygmtools.utils import build_aff_mat, gaussian_aff_fn
+from pygmtools.utils import build_aff_mat, gaussian_aff_fn, compute_affinity_score
 pygm.set_backend('pytorch')
 
 from utils.ceograph import NucleiData, nuclei_to_nx
@@ -107,32 +111,32 @@ class EditLoss(nn.Module):
             return EditLoss.pairwise_edit_distance(nx_graph_list, obs_padded)
 
 # %%
-class MatchingLoss(nn.Module):
-    def __init__(self, obs: list):
-        self.obs_node_matrix = obs[0]
-        self.obs_edge_matrix = obs[1]
-        self.obs_adj_matrix = obs[2]
+class AffinityScore(nn.Module):
+    def __init__(self):
+        super(AffinityScore, self).__init__()
 
-    def forward(self, X, C_x, A, E):
-        # X [b, nodes, cont_feat], C_x[b, nodes] 
-        # A[b, 2, edges], E[B, edges, feats]
-
-        # cat X and C_x -> [b, nodes, feat + 1]
-        node_matrix = torch.cat(
-            X, C_x.unsqueeze(-1), dim=-1
-        ) 
-
+    @staticmethod
+    def score(example: Data, ob: Data):
         aff_matrix = build_aff_mat(
-            node_feat1=node_matrix, 
-            edge_feat1=E, 
-            connectivity1=A.transpose(1, 2), 
-            node_feat2=self.obs_node_matrix, 
-            edge_feat2=self.obs_edge_matrix, 
-            connectivity2=self.obs_adj_matrix, 
+            node_feat1=example.x, 
+            edge_feat1=example.edge_attr, 
+            connectivity1=example.edge_index.t(),
+            node_feat2=ob.x, 
+            edge_feat2=ob.edge_attr, 
+            connectivity2=ob.edge_index.t(), 
             node_aff_fn=gaussian_aff_fn, 
-            edge_aff_fn=gaussian_aff_fn,
+            edge_aff_fn=gaussian_aff_fn, 
+            n2=[ob.x.shape[0]]
+        )
+        
+        matching = pygm.hungarian(
+            pygm.rrwm(aff_matrix, n1 = example.x.shape[0], n2 = ob.x.shape[0])
         )
 
-        # matching_matrix = 
-        
+        return compute_affinity_score(matching, aff_matrix)
 
+    def forward(self, examples: List[Data], obs: List[Data]):
+        scores = [AffinityScore.score(example, ob) 
+                  for example in examples for ob in obs]
+
+        return torch.stack(scores)

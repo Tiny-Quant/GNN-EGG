@@ -47,10 +47,8 @@ class EggSoft(nn.Module):
     
     def forward(self):
         X = self.ContNodeFeats()
-        print(X.shape)
         
         C_x, C_x_logLik = self.DisNodeFeats()
-        print(C_x.shape)
         #C_x = C_x.to(self.device_param.device)
         # print(C_x.device, self.device_param.device)
 
