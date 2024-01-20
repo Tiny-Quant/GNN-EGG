@@ -12,8 +12,8 @@ import matplotlib.cm as cm
 def color_cell_graph(graph, seed=100):
     network = torch_geometric.utils.to_networkx(graph)
 
-    cell_type_data = graph.cell_type.cpu().numpy()
-    edge_type_data = graph.edge_attr[:,0].cpu().numpy()
+    cell_type_data = graph.cell_type.cpu().detach().numpy()
+    edge_type_data = graph.edge_attr[:,0].cpu().detach().numpy()
 
     mycolors = np.array(["lime", "red", "blue", "magenta", "yellow", "cyan"])
     mycolor = mycolors[cell_type_data - 1]

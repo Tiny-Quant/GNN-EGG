@@ -214,13 +214,15 @@ def nuclei_to_nx(data: NucleiData) -> nx.DiGraph:
 
     # Add nodes with features
     for i in range(data.num_nodes):
-        node_feats = np.hstack((data.cell_type[i].numpy(), data.x[i].numpy()))
+        node_feats = np.hstack((data.cell_type[i].cpu().detach().numpy(), 
+                                data.x[i].cpu().detach().numpy()))
         G.add_node(i, node_features=node_feats)
 
     # Add edges with features
     for i in range(data.num_edges):
         src, tgt = data.edge_index[0, i].item(), data.edge_index[1, i].item()
-        G.add_edge(src, tgt, edge_features=data.edge_attr[i].numpy())
+        G.add_edge(src, tgt, 
+                   edge_features=data.edge_attr[i].cpu().detach().numpy())
 
     return G
 
