@@ -62,7 +62,7 @@ class CatFeatVector(nn.Module):
 
     def forward(self):
         # dist = td.Categorical(logits=self.logits)
-        dist = td.Categorical(probs=torch.softmax(self.probs, dim=0))
+        dist = td.Categorical(probs=torch.softmax(self.probs, dim=1))
         sample = dist.sample(
             (self.batch_size, self.num_obs)
         ) # sample adds an extra dim.
