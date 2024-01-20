@@ -75,7 +75,7 @@ class EditLoss(nn.Module):
             node_del_cost=lambda x: 0, 
             edge_del_cost=lambda x: 0,
             upper_bound=50, 
-            timeout=120
+            timeout=300
         )
 
         if dist is None: 

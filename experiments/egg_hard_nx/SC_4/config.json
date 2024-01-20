@@ -1,0 +1,13 @@
+{
+    "num_epochs": 51,
+    "learning_rate": 0.01,
+    "optimizer_name": "Adam",
+    "batch_size": 100,
+    "max_nodes": 50,
+    "target_name": "sc",
+    "obs_path": "data/slides/LUSC/sc_train_nx_100.pkl", 
+    "tensorboard_path": "experiments/egg_hard_nx/SC_4/tensorboard", 
+    "checkpoint_path": "experiments/egg_hard_nx/SC_4/checkpoints", 
+    "save_every": 10, 
+    "profile_run": false
+}

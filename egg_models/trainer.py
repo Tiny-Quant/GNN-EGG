@@ -31,7 +31,7 @@ class Trainer:
         self.writer = SummaryWriter(self.tensorboard_path)
         self.checkpoint_path = checkpoint_path
 
-    def train_one_epoch(self, lambda_1=1, lambda_2=1, lambda_3=1):
+    def train_one_epoch(self, lambda_1=1, lambda_2=100, lambda_3=1):
 
         self.optimizer.zero_grad()
         # X[b, nodes, feat]; C_x[b, nodes]; A[b, 2, edges];
@@ -58,40 +58,32 @@ class Trainer:
         pred_loss = (pred_losses.sum() * 1e6 + 
                      pred_rewards @ -C_x_logLik + 
                      pred_rewards @ -A_logLik) / self.generator.batch_size
-        
-        # pred_loss = pred_losses.sum() / self.generator.batch_size
 
-        #edit_loss_fn = EditLoss(self.obs)
-        #device = self.generator.device_param.device
-        #edit_dists = edit_loss_fn(graph_list).to(device) / len(self.obs)
-        #edit_rewards = 1 / edit_dists + 1 # smoother. 
-        #edit_loss = (edit_rewards @ -C_x_logLik.repeat(len(self.obs)) + 
-                     #edit_rewards @ -A_logLik.repeat(len(self.obs)))
+        edit_loss_fn = EditLoss(self.obs)
+        device = self.generator.device_param.device
+        edit_dists = edit_loss_fn(graph_list).to(device) / len(self.obs)
+        edit_rewards = 1 / edit_dists + 1 # smoother. 
+        edit_loss = (edit_rewards @ -C_x_logLik.repeat(len(self.obs)) + 
+                     edit_rewards @ -A_logLik.repeat(len(self.obs)))
 
         edge_pen = torch.norm(self.generator.AdjacencyMatrix.probs, p=1)
 
         loss = (lambda_1 * pred_loss +
-                # lambda_2 * edit_loss + 
+                lambda_2 * edit_loss + 
                 lambda_3 * edge_pen)
 
         loss.backward()
         self.optimizer.step()
-
-        print(edge_pen)
-        print(pred_rewards.mean())
-        print(pred_losses.mean())
-        print(-C_x_logLik.mean())
-        print(-A_logLik.mean())
         
         # Additional metrics.
         with torch.no_grad():
-            #mean_edit_dist = edit_dists.mean()
+            mean_edit_dist = edit_dists.mean()
             mean_pred_loss = pred_loss.mean()
         
         return [loss.item(), pred_loss.item(), 
-                #edit_loss.item(), 
+                edit_loss.item(), 
                 edge_pen.item(), 
-                # mean_edit_dist.item(), 
+                mean_edit_dist.item(), 
                 mean_pred_loss.item()]
 
     def train(self, num_epochs=1, save_every=1, 
@@ -121,9 +113,9 @@ class Trainer:
                     experimental_config=torch._C._profiler._ExperimentalConfig(verbose=True)
                 ) as prof: 
                     (total_loss, pred_loss, 
-                    # edit_loss, 
+                    edit_loss, 
                     edge_pen, 
-                    # mean_edit_dist, 
+                    mean_edit_dist, 
                     mean_pred_loss) = self.train_one_epoch()
                 with open(profile_dir + "/" + "profile.txt", "a+") as f:
                     print(prof.key_averages().table(sort_by="self_cuda_time_total"), 
@@ -131,16 +123,16 @@ class Trainer:
 
             else: 
                 (total_loss, pred_loss, 
-                # edit_loss, 
+                edit_loss, 
                 edge_pen, 
-                # mean_edit_dist, 
+                mean_edit_dist, 
                 mean_pred_loss) = self.train_one_epoch()
 
             self.writer.add_scalar("Total Loss", total_loss, epoch)
             self.writer.add_scalar("Prediction Loss", pred_loss, epoch)
             self.writer.add_scalar("Mean Prediction Loss", mean_pred_loss, epoch)
-            # self.writer.add_scalar("Edit Loss", edit_loss, epoch)
-            # self.writer.add_scalar("Mean Edit Distance", mean_edit_dist, epoch)
+            self.writer.add_scalar("Edit Loss", edit_loss, epoch)
+            self.writer.add_scalar("Mean Edit Distance", mean_edit_dist, epoch)
             self.writer.add_scalar("Edge Penalty", edge_pen, epoch)
 
             if epoch % save_every == 0:
