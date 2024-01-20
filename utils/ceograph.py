@@ -9,11 +9,15 @@ import torch.nn.functional as F
 import torch.multiprocessing as mp 
 from torch.multiprocessing import Pool
 
-import torch_geometric
+import torch_geometric as pyg
 from torch_geometric.nn import GCNConv, NNConv, global_max_pool
 from torch_geometric.data import Data
 from torch_geometric.utils import remove_isolated_nodes
 from torch_scatter import scatter_mean
+
+import pygmtools as pygm
+from pygmtools.utils import dense_to_sparse
+pygm.set_backend('pytorch')
 
 class EdgeNN(nn.Module):
     """
@@ -225,6 +229,23 @@ def nuclei_to_nx(data: NucleiData) -> nx.DiGraph:
                    edge_features=data.edge_attr[i].cpu().detach().numpy())
 
     return G
+
+def nuclei_to_data(G: NucleiData):
+    node_matrix = nn.functional.one_hot(G.cell_type - 1, 6)
+    node_matrix = torch.cat((G.x, node_matrix), dim=-1)
+
+    edge_index = pyg.utils.to_dense_adj(G.edge_index) + 1e-8
+    edge_index, edge_weights, _ = dense_to_sparse(edge_index)
+    edge_index = edge_index.transpose(1, 2).squeeze(0)
+
+    edge_attr = G.edge_attr
+    zero_pad = torch.zeros((edge_index.shape[1] - edge_attr.shape[0], 
+                            edge_attr.shape[1]))
+    edge_attr = torch.cat((edge_attr, zero_pad), dim=0)
+    edge_attr = torch.cat((edge_attr, edge_weights.squeeze(0)), dim=-1)
+
+
+    return Data(node_matrix, edge_index, edge_attr)
 
 def clear_iso_nodes(example: NucleiData, 
                     num_nodes: Optional[int] = None) -> NucleiData: 
