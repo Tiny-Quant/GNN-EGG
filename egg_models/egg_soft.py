@@ -11,7 +11,7 @@ from pygmtools.utils import dense_to_sparse
 pygm.set_backend('pytorch')
 
 from egg_models.generic_layers import ContFeatMatrix, ConcreteLayer, BinaryConcrete
-from utils.ceograph import assign_edge_type, NucleiData, load_model
+from utils.ceograph import assign_edge_type, NucleiData, load_model, clear_iso_nodes
 
 # %%
 class EggSoft(nn.Module):
@@ -47,9 +47,11 @@ class EggSoft(nn.Module):
     
     def forward(self):
         X = self.ContNodeFeats()
+        print(X.shape)
         
         C_x, C_x_logLik = self.DisNodeFeats()
-        C_x = C_x.to(self.device_param.device)
+        print(C_x.shape)
+        #C_x = C_x.to(self.device_param.device)
         # print(C_x.device, self.device_param.device)
 
         A, A_logLik = self.AdjacencyMatrix()
@@ -79,7 +81,7 @@ class EggSoft(nn.Module):
         edge_attr = torch.cat((edge_attr, E, edge_weights), dim=-1)
 
         # Wrap 
-        nuclei_list = [NucleiData(X, C_x, A, E) 
+        nuclei_list = [clear_iso_nodes(NucleiData(X, C_x, A, E))
                         for (X, C_x, A, E) in zip(
                             X.unbind(), C_x_hard.unbind(), edge_indices_hard.unbind(), 
                             edge_attr_hard.unbind()

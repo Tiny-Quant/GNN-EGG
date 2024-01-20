@@ -84,12 +84,12 @@ class ConcreteLayer(nn.Module):
             nn.init.uniform_(
                 torch.empty((1, self.num_cats)), 
                 0.0, 1.0
-            )
+            ).squeeze(0)
         )
     
     def forward(self):
         dist = td.RelaxedOneHotCategorical(
-            self.temp, probs=torch.softmax(self.probs, dim=1)
+            self.temp, probs=torch.softmax(self.probs, dim=0)
         )
         sample = dist.rsample(
             (self.batch_size, self.num_obs)
