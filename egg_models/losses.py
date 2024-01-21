@@ -2,8 +2,10 @@
 # %% Dependencies:
 from typing import List
 from functools import partial
+import gc
 
 import numpy as np 
+from tqdm.auto import tqdm
 
 import multiprocessing as mp 
 from multiprocessing import Pool
@@ -112,11 +114,17 @@ class EditLoss(nn.Module):
 
 # %%
 class AffinityScore(nn.Module):
-    def __init__(self):
+    def __init__(self, optimizer):
         super(AffinityScore, self).__init__()
+        self.optimizer = optimizer
 
-    @staticmethod
-    def score(example: Data, ob: Data):
+    def score(self, example: Data, ob: Data):
+
+        print(torch.cuda.memory_summary())
+
+        example.to(torch.device(0))
+        ob.to(torch.device(0))
+
         aff_matrix = build_aff_mat(
             node_feat1=example.x, 
             edge_feat1=example.edge_attr, 
@@ -133,10 +141,30 @@ class AffinityScore(nn.Module):
             pygm.rrwm(aff_matrix, n1 = example.x.shape[0], n2 = ob.x.shape[0])
         )
 
-        return compute_affinity_score(matching, aff_matrix)
+        matching_score = compute_affinity_score(matching, aff_matrix)
+        print(matching_score)
+        matching_score = matching_score.cpu().detach()
+        # ret = matching_score.cpu().item()
+        #matching_score.backward(retain_graph=True) 
+        #self.optimizer.step()
+
+        # Free vram
+        example.cpu()
+        ob.cpu()
+        aff_matrix.cpu()
+        matching.cpu()
+        del example, ob, aff_matrix, matching
+        torch.cuda.synchronize()
+        gc.collect()
+        torch.cuda.empty_cache()
+
+        print(matching_score)
+
+        return matching_score
 
     def forward(self, examples: List[Data], obs: List[Data]):
-        scores = [AffinityScore.score(example, ob) 
-                  for example in examples for ob in obs]
+        scores = [self.score(example, ob) 
+                  for example in tqdm(examples, desc="Generated")
+                  for ob in tqdm(obs, desc="Observed")]
 
         return torch.stack(scores)
