@@ -86,11 +86,13 @@ class EggSoft(nn.Module):
                       )]
         #nuclei_batch = Batch().from_data_list(nuclei_batch)
 
-        data_list = [Data(X, A, E) 
-                      for (X, A, E) in zip(
-                        node_matrix.unbind(), edge_indices.unbind(), 
-                        edge_attr.unbind()
-                    )]
+        # data_list = [Data(X, A, E) 
+        #               for (X, A, E) in zip(
+        #                 node_matrix.unbind(), edge_indices.unbind(), 
+        #                 edge_attr.unbind()
+        #             )]
         # data_batch = Batch().from_data_list(data_batch)
 
-        return (nuclei_list, data_list, C_x_logLik, A_logLik)
+        return (nuclei_list, 
+                node_matrix, edge_indices, edge_attr, 
+                C_x_logLik, A_logLik)
