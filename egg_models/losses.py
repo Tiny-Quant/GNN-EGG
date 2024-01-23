@@ -52,6 +52,22 @@ class PredLoss(nn.Module):
         return pred_losses
 
 # %%
+class PredLossBatched(nn.Module):
+    def __init__(self, target: torch.Tensor, 
+                 criterion: nn.Module, explainee: nn.Module):
+        super(PredLoss, self).__init__()
+        self.target = target
+        self.criterion = criterion
+        self.explainee = explainee
+    
+    def forward(self, nuclei_batch):
+        explainee_pred = torch.softmax(self.explainee(nuclei_batch), dim=1)
+        loss = self.criterion(explainee_pred, 
+                              self.target.expand_as(explainee_pred))
+
+        return loss
+
+# %%
 class EditLoss(nn.Module):
     def __init__(self, obs: list):
         super(EditLoss, self).__init__()
