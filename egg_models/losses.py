@@ -129,58 +129,89 @@ class EditLoss(nn.Module):
             return EditLoss.pairwise_edit_distance(nx_graph_list, obs_padded)
 
 # %%
-class AffinityScore(nn.Module):
-    def __init__(self, optimizer):
+class MatchingLoss(nn.Module):
+    def __init__(self, node_size, device=torch.device(0)):
         super(AffinityScore, self).__init__()
-        self.optimizer = optimizer
+        self.device = device 
+        self.max_gen_nodes = node_size
 
-    def score(self, example: Data, ob: Data):
-
-        print(torch.cuda.memory_summary())
-
-        example.to(torch.device(0))
-        ob.to(torch.device(0))
+    def forward(self, obs_batch, X, A, E):
+        obs_X = obs_batch['obs_X'].to(self.device)
+        obs_A = obs_batch['obs_A'].to(self.device)
+        obs_E = obs_batch['obs_E'].to(self.device)
 
         aff_matrix = build_aff_mat(
-            node_feat1=example.x, 
-            edge_feat1=example.edge_attr, 
-            connectivity1=example.edge_index.t(),
-            node_feat2=ob.x, 
-            edge_feat2=ob.edge_attr, 
-            connectivity2=ob.edge_index.t(), 
+            node_feat1=X, 
+            edge_feat1=E, 
+            connectivity1=A.transpose(1,2), 
+            node_feat2=obs_X, 
+            edge_feat2=obs_E, 
+            connectivity2=obs_A, 
             node_aff_fn=gaussian_aff_fn, 
             edge_aff_fn=gaussian_aff_fn, 
-            n2=[ob.x.shape[0]]
+            # n2 = max_nodes_2 # sometimes need to resolve bug - I think for unbatched. 
         )
-        
+
         matching = pygm.hungarian(
-            pygm.rrwm(aff_matrix, n1 = example.x.shape[0], n2 = ob.x.shape[0])
+            pygm.rrwm(aff_matrix, n1max = self.max_gen_nodes, 
+                      n2max = aff_matrix.shape[1] // self.max_gen_nodes)
         )
 
-        matching_score = compute_affinity_score(matching, aff_matrix)
-        print(matching_score)
-        matching_score = matching_score.cpu().detach()
-        # ret = matching_score.cpu().item()
-        #matching_score.backward(retain_graph=True) 
-        #self.optimizer.step()
+        return 1 / compute_affinity_score(matching, aff_matrix)
 
-        # Free vram
-        example.cpu()
-        ob.cpu()
-        aff_matrix.cpu()
-        matching.cpu()
-        del example, ob, aff_matrix, matching
-        torch.cuda.synchronize()
-        gc.collect()
-        torch.cuda.empty_cache()
+# %%
+# class AffinityScore(nn.Module):
+#     def __init__(self, optimizer):
+#         super(AffinityScore, self).__init__()
+#         self.optimizer = optimizer
 
-        print(matching_score)
+#     def score(self, example: Data, ob: Data):
 
-        return matching_score
+#         print(torch.cuda.memory_summary())
 
-    def forward(self, examples: List[Data], obs: List[Data]):
-        scores = [self.score(example, ob) 
-                  for example in tqdm(examples, desc="Generated")
-                  for ob in tqdm(obs, desc="Observed")]
+#         example.to(torch.device(0))
+#         ob.to(torch.device(0))
 
-        return torch.stack(scores)
+#         aff_matrix = build_aff_mat(
+#             node_feat1=example.x, 
+#             edge_feat1=example.edge_attr, 
+#             connectivity1=example.edge_index.t(),
+#             node_feat2=ob.x, 
+#             edge_feat2=ob.edge_attr, 
+#             connectivity2=ob.edge_index.t(), 
+#             node_aff_fn=gaussian_aff_fn, 
+#             edge_aff_fn=gaussian_aff_fn, 
+#             n2=[ob.x.shape[0]]
+#         )
+        
+#         matching = pygm.hungarian(
+#             pygm.rrwm(aff_matrix, n1 = example.x.shape[0], n2 = ob.x.shape[0])
+#         )
+
+#         matching_score = compute_affinity_score(matching, aff_matrix)
+#         print(matching_score)
+#         matching_score = matching_score.cpu().detach()
+#         # ret = matching_score.cpu().item()
+#         #matching_score.backward(retain_graph=True) 
+#         #self.optimizer.step()
+
+#         # Free vram
+#         example.cpu()
+#         ob.cpu()
+#         aff_matrix.cpu()
+#         matching.cpu()
+#         del example, ob, aff_matrix, matching
+#         torch.cuda.synchronize()
+#         gc.collect()
+#         torch.cuda.empty_cache()
+
+#         print(matching_score)
+
+#         return matching_score
+
+#     def forward(self, examples: List[Data], obs: List[Data]):
+#         scores = [self.score(example, ob) 
+#                   for example in tqdm(examples, desc="Generated")
+#                   for ob in tqdm(obs, desc="Observed")]
+
+#         return torch.stack(scores)
