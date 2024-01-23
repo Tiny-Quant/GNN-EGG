@@ -55,7 +55,7 @@ class PredLoss(nn.Module):
 class PredLossBatched(nn.Module):
     def __init__(self, target: torch.Tensor, 
                  criterion: nn.Module, explainee: nn.Module):
-        super(PredLoss, self).__init__()
+        super(PredLossBatched, self).__init__()
         self.target = target
         self.criterion = criterion
         self.explainee = explainee
@@ -64,7 +64,7 @@ class PredLossBatched(nn.Module):
         explainee_pred = torch.softmax(self.explainee(nuclei_batch), dim=1)
         loss = self.criterion(explainee_pred, 
                               self.target.expand_as(explainee_pred))
-
+        print(loss)
         return loss
 
 # %%
@@ -131,7 +131,7 @@ class EditLoss(nn.Module):
 # %%
 class MatchingLoss(nn.Module):
     def __init__(self, node_size, device=torch.device(0)):
-        super(AffinityScore, self).__init__()
+        super(MatchingLoss, self).__init__()
         self.device = device 
         self.max_gen_nodes = node_size
 

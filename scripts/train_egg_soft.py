@@ -51,6 +51,8 @@ if __name__ == '__main__':
     save_every = config_data["save_every"]
     profile_dir = config_data.get('profile_dir') 
 
+    obs_node_limit = 50
+
     device = torch.device(0)
 
     if target_name == "ad":
@@ -60,6 +62,8 @@ if __name__ == '__main__':
 
     with open(obs_path, 'rb') as f:
         obs = pickle.load(f)
+
+    obs_loader = ceograph.get_obs_loader(obs, node_limit=obs_node_limit)
 
     CONT_NODE_FEATS = 11
     CELL_TYPES = 6

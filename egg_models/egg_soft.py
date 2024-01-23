@@ -148,14 +148,13 @@ class EggSoftTrainer(BaseTrainer):
                         accumulate_grad_every=1):
         self.optimizer.zero_grad
         for i, obs_batch in enumerate(self.obs_loader):
-            generated = self.generator()
+            generated = self.model()
 
             nuclei_batch = get_nuclei_batch(generated['X_shared'],
                                             generated['C_x_hard'], 
                                             generated['A_hard'], 
                                             generated['E_hard'])
-
-            pred_loss = self.pred_loss(nuclei_batch).mean(dim=1)
+            pred_loss = self.pred_loss(nuclei_batch) #.mean(dim=1)
 
             if self.reinforce_pred:
                 pred_loss = (pred_loss.mean() + 
@@ -177,17 +176,18 @@ class EggSoftTrainer(BaseTrainer):
             else: 
                 match_loss = match_loss.mean()
 
-            edge_pen = torch.norm(self.generator.AdjacencyMatrix.probs, p=1)
+            edge_pen = torch.norm(self.model.AdjacencyMatrix.probs, p=1)
 
             total_loss = (lambda_1 * pred_loss +
                           lambda_2 * match_loss + 
                           lambda_3 * edge_pen)
 
-            result = {'pred_loss': pred_loss.item(), 
-                      'match_loss': match_loss.item(), 
-                      'edge_pen': edge_pen.item()}
+            result = {'total_loss': total_loss.item(), 
+                      'pred_loss': lambda_1 * pred_loss.item(), 
+                      'match_loss': lambda_2 * match_loss.item(), 
+                      'edge_pen': lambda_3 * edge_pen.item()}
 
-            total_loss.backwards()
+            total_loss.backward()
 
             if (i+1) % accumulate_grad_every == 0:
                 self.optimizer.step()
@@ -198,4 +198,5 @@ class EggSoftTrainer(BaseTrainer):
     def per_epoch_logger(self, result, epoch):
         self.writer.add_scalar("Total Loss", result['total_loss'], epoch)
         self.writer.add_scalar("Prediction Loss", result['pred_loss'], epoch)
+        self.writer.add_scalar("Matching Loss", result['match_loss'], epoch)
         self.writer.add_scalar("Edge Penalty", result['edge_pen'], epoch)

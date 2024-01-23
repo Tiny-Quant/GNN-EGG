@@ -296,9 +296,11 @@ def get_obs_loader(raw: List[NucleiData], node_limit=1000, batch_size=1):
         if graph.x.shape[0] <= node_limit: 
             temp = nuclei_to_data(graph)
             node_limited.append(temp)
-    
-    obs_loader = DataLoader(node_limit, batch_size=batch_size, 
+    obs_dataset = ObsDataset(node_limited) 
+    obs_loader = DataLoader(obs_dataset, batch_size=batch_size, 
                             collate_fn=pygm_collate_fn)
+
+    return obs_loader
 
 def get_nuclei_batch(X, C_x, A, E):
 
