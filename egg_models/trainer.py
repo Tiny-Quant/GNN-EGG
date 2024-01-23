@@ -158,7 +158,7 @@ class BaseTrainer:
     def train_one_epoch(self):
         raise NotImplementedError
 
-    def per_epoch_logger(self):
+    def per_epoch_logger(self, result):
         pass
     
     def save_checkpoint(self, epoch, total_epochs):
@@ -204,7 +204,7 @@ class BaseTrainer:
             else: 
                 result = self.train_one_epoch()
 
-            self.per_epoch_logger()
+            self.per_epoch_logger(result)
 
             self.save_checkpoint(epoch, total_epochs)
 
