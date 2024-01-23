@@ -14,7 +14,10 @@ pygm.set_backend('pytorch')
 
 from egg_models.generic_layers import ContFeatMatrix, ConcreteLayer, BinaryConcrete
 from egg_models.trainer import BaseTrainer
-from utils.ceograph import assign_edge_type, NucleiData, load_model, clear_iso_nodes
+from utils.ceograph import (
+    assign_edge_type, NucleiData, load_model, clear_iso_nodes, 
+    get_nuclei_batch
+)
 
 # %%
 class EggSoft(nn.Module):
@@ -135,7 +138,12 @@ class EggSoftTrainer(BaseTrainer):
         for i, obs_batch in enumerate(self.obs_loader):
             generated = self.generator()
 
-            # get_nuclei_batch(generated['keys])
+            nuclei_batch = get_nuclei_batch(generated['X_shared'],
+                                            generated['C_x_hard'], 
+                                            generated['A_hard'], 
+                                            generated['E_hard'])
+
+            
 
             # pred_loss = pred_loss_batched(nuclei_batch)
 
