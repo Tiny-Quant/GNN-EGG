@@ -6,32 +6,43 @@ GNN-EGG/ (repo)
   |-- data/ 
   |  |-- slides/ (raw or transformed data created directly from slide data)
   |  |
-  |  |-- trained/ 
+  |  |-- explainee/ 
   |    |
   |    |-- model_name/
   |      |-- state_dict or checkpoint (.pt)
-  |      |
-  |      |-- training_logs (losses, grad checks, timing) (.pkl)
   |
   |-- notebooks/ (exploratory)
   |
   |-- egg_models/
   |  |
-  |  |-- egg_components/ (layers, losses, trainer)
+  |  |--generic_layer.py 
   |  | 
-  |  |-- egg_x.py (final model built from components)
-  |  |
-  |  |-- train_egg_x.py (runnable script, terminal options, logging)
+  |  |--losses.py 
+  |  | 
+  |  |--trainer.py 
+  |  | 
+  |  |-- egg_x.py (final models + extended training logic + logging)
   | 
-  |-- scripts/ (.py)
-  |     |-- template/ (includes files for unit tests)
-  |     |
-  |     |-- utils/ (mostly data processing or helpers)
-  |     |
-  |     |-- ceograph/
-  |     | 
-  |     |-- visuals/
-  |     |
+  |-- utils/ 
+  |  |-- ceograph.py (ceograph data structs + processing helper functions).
+  |  | 
+  |  |--segmentation_function.py 
+  |  | 
+  |  |--visuals.py 
   |
+  |-- scripts/ (.py)
+  |  |
+  |  |-- train_{model name}.py (script - handles all model parameters)
+  |
+  |-- experiments/
+  |  |
+  |  |-- {model name}/ 
+  |  |  |-- {experiment name}/ 
+  |  |  |  |-- checkpoints/ 
+  |  |  |  |
+  |  |  |  |-- tensorboard/
+  |  |  |  |
+  |  |  |  |-- config.json (handles all training parameter + file paths)
+  |  | 
   |-- archive/
 ```
