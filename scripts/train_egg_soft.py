@@ -80,6 +80,11 @@ if __name__ == '__main__':
     generator.to(device) 
     generator.train()
 
+    pred_loss_fn = PredLossBatched(target=target, criterion=nn.BCELoss(), 
+                                   explainee=explainee)
+
+    struct_loss_fn = MatchingLoss(node_size=max_nodes)
+
     # Dynamically create the optimizer class
     optimizer_class_str = "optim." + optimizer_name
     optimizer_class = getattr(torch.optim, optimizer_name, None)
@@ -89,3 +94,8 @@ if __name__ == '__main__':
     else:
         raise ValueError(f"Unsupported optimizer: {optimizer_name}")
 
+    trainer = EggSoftTrainer(generator, explainee, obs_loader, 
+                             target, pred_loss_fn, struct_loss_fn, optimizer,
+                             tensorboard_path, checkpoint_path, save_every)
+
+    trainer.train(num_epochs, save_every, opt.resume_path, profile_dir)

@@ -14,7 +14,7 @@ pygm.set_backend('pytorch')
 
 from egg_models.generic_layers import ContFeatMatrix, ConcreteLayer, BinaryConcrete
 from egg_models.trainer import BaseTrainer
-from egg_models.losses import PredLossBatched, MatchingLoss 
+# from egg_models.losses import PredLossBatched, MatchingLoss 
 from utils.ceograph import (
     assign_edge_type, NucleiData, load_model, clear_iso_nodes, 
     get_nuclei_batch

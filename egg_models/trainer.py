@@ -204,7 +204,7 @@ class BaseTrainer:
             else: 
                 result = self.train_one_epoch()
 
-            self.per_epoch_logger(result)
+            self.per_epoch_logger(result, epoch)
 
             self.save_checkpoint(epoch, total_epochs)
 
