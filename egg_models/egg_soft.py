@@ -14,6 +14,7 @@ pygm.set_backend('pytorch')
 
 from egg_models.generic_layers import ContFeatMatrix, ConcreteLayer, BinaryConcrete
 from egg_models.trainer import BaseTrainer
+from egg_models.losses import PredLossBatched, MatchingLoss 
 from utils.ceograph import (
     assign_edge_type, NucleiData, load_model, clear_iso_nodes, 
     get_nuclei_batch
@@ -116,24 +117,35 @@ class EggSoft(nn.Module):
 # %%
 class EggSoftTrainer(BaseTrainer): 
     def __init__(self,
-                model: nn.Module, 
+                model: EggSoft, 
                 explainee: nn.Module, 
                 obs_loader: DataLoader, 
                 target: torch.Tensor, 
-                criterion: nn.Module, 
+                pred_loss: nn.Module, 
+                struct_loss: nn.Module, 
                 optimizer: torch.optim.Optimizer, 
                 tensorboard_path, 
-                checkpoint_path, save_every=1):
+                checkpoint_path, save_every=1, 
+                reinforce_pred=False, reinforce_struct=False):
 
         super().__init__(model, optimizer, checkpoint_path, save_every)
 
         self.explainee = explainee
         self.obs_loader = obs_loader
         self.target = target
-        self.criterion = criterion
+
+        self.pred_loss = pred_loss 
+        self.reinforce_pred = reinforce_pred
+        self.struct_loss = struct_loss
+        self.reinforce_struct = reinforce_struct
+
+        self.tensorboard_path = tensorboard_path
+        self.checkpoint_path = checkpoint_path
+        self.save_every = save_every
         self.writer = SummaryWriter(tensorboard_path)
 
-    def train_one_epoch(self, accumulate_grad_every=1):
+    def train_one_epoch(self, lambda_1=1, lambda_2=1, lambda_3=1, 
+                        accumulate_grad_every=1):
         self.optimizer.zero_grad
         for i, obs_batch in enumerate(self.obs_loader):
             generated = self.generator()
@@ -143,23 +155,47 @@ class EggSoftTrainer(BaseTrainer):
                                             generated['A_hard'], 
                                             generated['E_hard'])
 
+            pred_loss = self.pred_loss(nuclei_batch).mean(dim=1)
+
+            if self.reinforce_pred:
+                pred_loss = (pred_loss.mean() + 
+                             (1 / pred_loss) @ 
+                             (-generated['C_x_logLik'] +  -generated['A_logLik']))
+            else: 
+                pred_loss = pred_loss.mean()
+
+            match_loss = self.struct_loss(obs_batch, 
+                                         generated['node_matrix_soft'], 
+                                         generated['A_soft'], 
+                                         generated['E_soft'])
+
+            if self.reinforce_struct:
+                match_loss = (match_loss.mean() + 
+                              (1 / match_loss) @ 
+                              (-generated['C_x_logLik'] +  -generated['A_logLik']))
             
+            else: 
+                match_loss = match_loss.mean()
 
-            # pred_loss = pred_loss_batched(nuclei_batch)
+            edge_pen = torch.norm(self.generator.AdjacencyMatrix.probs, p=1)
 
-            # matching_loss = 1 / matching_score
+            total_loss = (lambda_1 * pred_loss +
+                          lambda_2 * match_loss + 
+                          lambda_3 * edge_pen)
 
-            # edge_pen = 
+            result = {'pred_loss': pred_loss.item(), 
+                      'match_loss': match_loss.item(), 
+                      'edge_pen': edge_pen.item()}
 
-            # total_loss = lambdas * pred_loss + matching_loss + edge_pen
-
-            # result = {}
-
-            # total_loss.backwards()
+            total_loss.backwards()
 
             if (i+1) % accumulate_grad_every == 0:
                 self.optimizer.step()
                 self.optimizer.zero_grad()
 
-    def per_epoch_logger(self, result):
-        return super().per_epoch_logger(result)
+            return result
+
+    def per_epoch_logger(self, result, epoch):
+        self.writer.add_scalar("Total Loss", result['total_loss'], epoch)
+        self.writer.add_scalar("Prediction Loss", result['pred_loss'], epoch)
+        self.writer.add_scalar("Edge Penalty", result['edge_pen'], epoch)
