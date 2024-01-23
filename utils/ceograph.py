@@ -293,10 +293,11 @@ def pygm_collate_fn(batch):
 def get_obs_loader(raw: List[NucleiData], node_limit=1000, batch_size=1):
     node_limited = []
     for graph in raw:
-        if graph.x.shape[0] <= node_limit, 
-        temp = nuclei_to_data(graph)
-        node_limited.append(temp)
+        if graph.x.shape[0] <= node_limit: 
+            temp = nuclei_to_data(graph)
+            node_limited.append(temp)
     
-    obs_loader = DataLoader(node_limit, batch_size=batch_size, collate_fn=pygm_collate_fn)
+    obs_loader = DataLoader(node_limit, batch_size=batch_size, 
+                            collate_fn=pygm_collate_fn)
 
         

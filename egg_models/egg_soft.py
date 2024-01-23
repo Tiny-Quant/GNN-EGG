@@ -130,8 +130,28 @@ class EggSoftTrainer(BaseTrainer):
         self.criterion = criterion
         self.writer = SummaryWriter(tensorboard_path)
 
-    def train_one_epoch(self):
-        return super().train_one_epoch()
+    def train_one_epoch(self, accumulate_grad_every=1):
+        self.optimizer.zero_grad
+        for i, obs_batch in enumerate(self.obs_loader):
+            generated = self.generator()
 
-    def save_checkpoint(self, epoch, total_epochs):
-        return super().save_checkpoint(epoch, total_epochs)
+            # get_nuclei_batch(generated['keys])
+
+            # pred_loss = pred_loss_batched(nuclei_batch)
+
+            # matching_loss = 1 / matching_score
+
+            # edge_pen = 
+
+            # total_loss = lambdas * pred_loss + matching_loss + edge_pen
+
+            # result = {}
+
+            # total_loss.backwards()
+
+            if (i+1) % accumulate_grad_every == 0:
+                self.optimizer.step()
+                self.optimizer.zero_grad()
+
+    def per_epoch_logger(self, result):
+        return super().per_epoch_logger(result)
