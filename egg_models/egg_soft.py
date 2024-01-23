@@ -62,6 +62,7 @@ class EggSoft(nn.Module):
             C_x_hard = torch.argmax(C_x, dim=-1) + 1
             A_hard = (A >= 0.5)
             edge_indices_hard = dense_to_sparse(A_hard)[0].transpose(1, 2)
+            # TODO: further abstraction needed for benchmark datasets. 
             edge_types_hard = assign_edge_type(
                 edge_indices_hard, C_x_hard
             ).to(self.device_param.device)
@@ -79,11 +80,11 @@ class EggSoft(nn.Module):
         edge_attr = torch.cat((edge_attr, E, edge_weights), dim=-1)
 
         # Wrap 
-        nuclei_list = [clear_iso_nodes(NucleiData(X, C_x, A, E))
-                        for (X, C_x, A, E) in zip(
-                            X.unbind(), C_x_hard.unbind(), edge_indices_hard.unbind(), 
-                            edge_attr_hard.unbind()
-                      )]
+        # nuclei_list = [clear_iso_nodes(NucleiData(X, C_x, A, E))
+        #                 for (X, C_x, A, E) in zip(
+        #                     X.unbind(), C_x_hard.unbind(), edge_indices_hard.unbind(), 
+        #                     edge_attr_hard.unbind()
+        #               )]
         #nuclei_batch = Batch().from_data_list(nuclei_batch)
 
         # data_list = [Data(X, A, E) 
@@ -93,6 +94,15 @@ class EggSoft(nn.Module):
         #             )]
         # data_batch = Batch().from_data_list(data_batch)
 
-        return (nuclei_list, 
-                node_matrix, edge_indices, edge_attr, 
-                C_x_logLik, A_logLik)
+        results_dict = {'X_shared': X, 
+                        'C_x_hard': C_x_hard, 
+                        'A_hard': edge_indices_hard, 
+                        'E_hard': edge_attr_hard, 
+                        'node_matrix_soft': node_matrix, 
+                        'A_soft': edge_indices, 
+                        'E_soft': edge_attr, 
+                        'C_x_logLik': C_x_logLik, 
+                        'A_logLik': A_logLik
+        }
+
+        return results_dict
