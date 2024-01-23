@@ -12,7 +12,7 @@ from torch.multiprocessing import Pool
 
 import torch_geometric as pyg
 from torch_geometric.nn import GCNConv, NNConv, global_max_pool
-from torch_geometric.data import Data
+from torch_geometric.data import Data, Batch
 from torch_geometric.utils import remove_isolated_nodes
 from torch_scatter import scatter_mean
 
@@ -300,4 +300,13 @@ def get_obs_loader(raw: List[NucleiData], node_limit=1000, batch_size=1):
     obs_loader = DataLoader(node_limit, batch_size=batch_size, 
                             collate_fn=pygm_collate_fn)
 
-        
+def get_nuclei_batch(X, C_x, A, E):
+
+    nuclei_list = [clear_iso_nodes(NucleiData(X, C_x, A, E))
+                    for (X, C_x, A, E) in zip(
+                        X.unbind(), C_x.unbind(), A.unbind(), 
+                        E.unbind()
+                  )]
+
+    return Batch().from_data_list(nuclei_list)
+
