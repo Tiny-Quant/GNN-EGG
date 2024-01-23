@@ -1,9 +1,10 @@
-from typing import Optional
+from typing import Optional, List
 import numpy as np
 import networkx as nx
 
 import torch 
 from torch import Tensor
+from torch.utils.data import Dataset, DataLoader
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.multiprocessing as mp 
@@ -16,7 +17,7 @@ from torch_geometric.utils import remove_isolated_nodes
 from torch_scatter import scatter_mean
 
 import pygmtools as pygm
-from pygmtools.utils import dense_to_sparse
+from pygmtools.utils import dense_to_sparse, build_batch
 pygm.set_backend('pytorch')
 
 class EdgeNN(nn.Module):
@@ -265,3 +266,37 @@ def clear_iso_nodes(example: NucleiData,
     )
 
     return example_masked
+
+class ObsDataset(Dataset):
+    def __init__(self, data):
+        self.data = data
+    
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        graph_batch = self.data[index]
+        X = graph_batch.x 
+        A = graph_batch.edge_index.t()
+        E = graph_batch.edge_attr
+        return {'obs_X': X, 'obs_A': A, 'obs_E': E}
+
+def pygm_collate_fn(batch):
+    # Assuming you have a custom padding function that pads and creates batches
+    # Modify this function according to your specific padding logic
+    X_batch = build_batch([item['obs_X'] for item in batch])
+    A_batch = build_batch([item['obs_A'] for item in batch])
+    E_batch = build_batch([item['obs_E'] for item in batch])
+
+    return {'obs_X': X_batch, 'obs_A': A_batch, 'obs_E': E_batch}
+
+def get_obs_loader(raw: List[NucleiData], node_limit=1000, batch_size=1):
+    node_limited = []
+    for graph in raw:
+        if graph.x.shape[0] <= node_limit, 
+        temp = nuclei_to_data(graph)
+        node_limited.append(temp)
+    
+    obs_loader = DataLoader(node_limit, batch_size=batch_size, collate_fn=pygm_collate_fn)
+
+        
