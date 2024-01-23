@@ -1,6 +1,8 @@
 # %%
 import torch 
 import torch.nn as nn 
+from torch.utils.data import DataLoader
+from torch.utils.tensorboard import SummaryWriter
 # import torch.distributions as td
 
 # import torch_geometric as pyg
@@ -11,6 +13,7 @@ from pygmtools.utils import dense_to_sparse
 pygm.set_backend('pytorch')
 
 from egg_models.generic_layers import ContFeatMatrix, ConcreteLayer, BinaryConcrete
+from egg_models.trainer import BaseTrainer
 from utils.ceograph import assign_edge_type, NucleiData, load_model, clear_iso_nodes
 
 # %%
@@ -106,3 +109,29 @@ class EggSoft(nn.Module):
         }
 
         return results_dict
+
+# %%
+class EggSoftTrainer(BaseTrainer): 
+    def __init__(self,
+                model: nn.Module, 
+                explainee: nn.Module, 
+                obs_loader: DataLoader, 
+                target: torch.Tensor, 
+                criterion: nn.Module, 
+                optimizer: torch.optim.Optimizer, 
+                tensorboard_path, 
+                checkpoint_path, save_every=1):
+
+        super().__init__(model, optimizer, checkpoint_path, save_every)
+
+        self.explainee = explainee
+        self.obs_loader = obs_loader
+        self.target = target
+        self.criterion = criterion
+        self.writer = SummaryWriter(tensorboard_path)
+
+    def train_one_epoch(self):
+        return super().train_one_epoch()
+
+    def save_checkpoint(self, epoch, total_epochs):
+        return super().save_checkpoint(epoch, total_epochs)
