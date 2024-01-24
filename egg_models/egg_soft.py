@@ -1,4 +1,6 @@
 # %%
+from tqdm.auto import tqdm
+
 import torch 
 import torch.nn as nn 
 from torch.utils.data import DataLoader
@@ -126,7 +128,9 @@ class EggSoftTrainer(BaseTrainer):
                 optimizer: torch.optim.Optimizer, 
                 tensorboard_path, 
                 checkpoint_path, save_every=1, 
-                reinforce_pred=False, reinforce_struct=False):
+                samples_per_param=1, 
+                reinforce_pred=False, reinforce_struct=False, 
+                lambda_1=1, lambda_2=1, lambda_3=1):
 
         super().__init__(model, optimizer, checkpoint_path, save_every)
 
@@ -138,35 +142,41 @@ class EggSoftTrainer(BaseTrainer):
         self.reinforce_pred = reinforce_pred
         self.struct_loss = struct_loss
         self.reinforce_struct = reinforce_struct
+        self.samples_per_param = samples_per_param
+        self.lambda_1 = lambda_1
+        self.lambda_2 = lambda_2
+        self.lambda_3 = lambda_3
 
         self.tensorboard_path = tensorboard_path
         self.checkpoint_path = checkpoint_path
         self.save_every = save_every
         self.writer = SummaryWriter(tensorboard_path)
 
-    def train_one_epoch(self, lambda_1=1, lambda_2=1, lambda_3=1, 
-                        accumulate_grad_every=1):
+    def train_one_epoch(self):
         self.optimizer.zero_grad
-        for i, obs_batch in enumerate(self.obs_loader):
+        i = 0
+        for obs_batch in tqdm(self.obs_loader, desc="Batching"):
+
             generated = self.model()
 
             nuclei_batch = get_nuclei_batch(generated['X_shared'],
                                             generated['C_x_hard'], 
                                             generated['A_hard'], 
                                             generated['E_hard'])
-            pred_loss = self.pred_loss(nuclei_batch) #.mean(dim=1)
+            pred_loss = self.pred_loss(nuclei_batch).mean(dim=1)
 
             if self.reinforce_pred:
                 pred_loss = (pred_loss.mean() + 
                              (1 / pred_loss) @ 
                              (-generated['C_x_logLik'] +  -generated['A_logLik']))
+
             else: 
                 pred_loss = pred_loss.mean()
 
             match_loss = self.struct_loss(obs_batch, 
-                                         generated['node_matrix_soft'], 
-                                         generated['A_soft'], 
-                                         generated['E_soft'])
+                                          generated['node_matrix_soft'], 
+                                          generated['A_soft'], 
+                                          generated['E_soft'])
 
             if self.reinforce_struct:
                 match_loss = (match_loss.mean() + 
@@ -175,23 +185,24 @@ class EggSoftTrainer(BaseTrainer):
             
             else: 
                 match_loss = match_loss.mean()
-
+            
             edge_pen = torch.norm(self.model.AdjacencyMatrix.probs, p=1)
 
-            total_loss = (lambda_1 * pred_loss +
-                          lambda_2 * match_loss + 
-                          lambda_3 * edge_pen)
+            total_loss = (self.lambda_1 * pred_loss +
+                          self.lambda_2 * match_loss + 
+                          self.lambda_3 * edge_pen)
 
             result = {'total_loss': total_loss.item(), 
-                      'pred_loss': lambda_1 * pred_loss.item(), 
-                      'match_loss': lambda_2 * match_loss.item(), 
-                      'edge_pen': lambda_3 * edge_pen.item()}
+                      'pred_loss': self.lambda_1 * pred_loss.item(), 
+                      'match_loss': self.lambda_2 * match_loss.item(), 
+                      'edge_pen': self.lambda_3 * edge_pen.item()}
 
             total_loss.backward()
 
-            if (i+1) % accumulate_grad_every == 0:
+            if (i+1) % self.samples_per_param == 0:
                 self.optimizer.step()
                 self.optimizer.zero_grad()
+            i += 1
 
             return result
 

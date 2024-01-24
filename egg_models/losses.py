@@ -64,8 +64,9 @@ class PredLossBatched(nn.Module):
         explainee_pred = torch.softmax(self.explainee(nuclei_batch), dim=1)
         loss = self.criterion(explainee_pred, 
                               self.target.expand_as(explainee_pred))
-        print(loss)
+
         return loss
+        #return torch.tensor([loss]).to(self.target.device)
 
 # %%
 class EditLoss(nn.Module):

@@ -1,13 +1,12 @@
 # %% Dependencies:
 import math 
 from abc import abstractmethod
+from tqdm.auto import tqdm
 
 import torch 
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from torch.profiler import profile, ProfilerActivity
-
-from tqdm import tqdm
 
 from utils.ceograph import NucleiData, clear_iso_nodes
 from egg_models.losses import PredLoss, EditLoss
@@ -104,7 +103,8 @@ class Trainer:
             start_epoch = 0
 
         total_epochs = start_epoch + num_epochs 
-        for epoch in tqdm(range(start_epoch, total_epochs), desc="Training"):
+        for epoch in tqdm(range(start_epoch, total_epochs), 
+            desc="Epochs", dynamic_ncols=True):
             
             if profile_run and epoch == math.ceil((start_epoch + total_epochs) / 2):
                 with profile( 

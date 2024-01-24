@@ -1,0 +1,18 @@
+{
+    "num_epochs": 100,
+    "learning_rate": 0.01,
+    "optimizer_name": "Adam",
+    "batch_size": 1,
+    "max_nodes": 50,
+    "obs_node_limit": 300, 
+    "samples_per_param": 1000, 
+    "pred_weight": 1, 
+    "struct_weight": 1000, 
+    "sparsity_weight": 0.001, 
+    "target_name": "sc",
+    "obs_path": "data/slides/LUSC/tcga_lusc_train.pkl", 
+    "tensorboard_path": "experiments/egg_soft/debug_run/tensorboard", 
+    "checkpoint_path": "experiments/egg_soft/debug_run/checkpoints", 
+    "save_every": 1, 
+    "profile_run": false
+}
