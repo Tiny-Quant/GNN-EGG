@@ -1,7 +1,7 @@
 # %% Dependencies:
 import math 
 from abc import abstractmethod
-from tqdm.auto import tqdm
+from tqdm import tqdm
 
 import torch 
 import torch.nn as nn
@@ -187,7 +187,7 @@ class BaseTrainer:
             start_epoch = 0
 
         total_epochs = start_epoch + num_epochs 
-        for epoch in tqdm(range(start_epoch, total_epochs), desc="Training"):
+        for epoch in tqdm(range(start_epoch, total_epochs), desc="Training", leave=True):
             
             if profile_dir is not None and epoch == math.ceil((start_epoch + total_epochs) / 2):
                 with profile( 
