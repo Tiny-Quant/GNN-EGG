@@ -104,6 +104,7 @@ if __name__ == '__main__':
     trainer = EggSoftTrainer(generator, explainee, obs_loader, 
                              target, pred_loss_fn, struct_loss_fn, optimizer,
                              tensorboard_path, checkpoint_path, save_every,
-                             samples_per_param=samples_per_param) 
+                             samples_per_param=samples_per_param, 
+                             lambda_1=lambda_1, lambda_2=lambda_2, lambda_3=lambda_3) 
 
     trainer.train(num_epochs, opt.resume_path, profile_dir)
