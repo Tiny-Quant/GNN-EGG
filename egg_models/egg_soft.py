@@ -1,5 +1,5 @@
 # %%
-from tqdm.auto import tqdm
+from tqdm import tqdm
 
 import torch 
 import torch.nn as nn 
@@ -153,9 +153,12 @@ class EggSoftTrainer(BaseTrainer):
         self.writer = SummaryWriter(tensorboard_path)
 
     def train_one_epoch(self):
-        self.optimizer.zero_grad
-        i = 0
-        for obs_batch in tqdm(self.obs_loader, desc="Batching"):
+        self.optimizer.zero_grad()
+        running_total_loss = 0
+        running_pred_loss = 0
+        running_match_loss = 0
+        running_edge_pen = 0
+        for i, obs_batch in enumerate(tqdm(self.obs_loader, desc="Batching", leave=False)):
 
             generated = self.model()
 
@@ -186,25 +189,31 @@ class EggSoftTrainer(BaseTrainer):
             else: 
                 match_loss = match_loss.mean()
             
-            edge_pen = torch.norm(self.model.AdjacencyMatrix.probs, p=1)
+            edge_pen = torch.norm(self.model.AdjacencyMatrix.probs, p=2)
 
             total_loss = (self.lambda_1 * pred_loss +
                           self.lambda_2 * match_loss + 
                           self.lambda_3 * edge_pen)
-
-            result = {'total_loss': total_loss.item(), 
-                      'pred_loss': self.lambda_1 * pred_loss.item(), 
-                      'match_loss': self.lambda_2 * match_loss.item(), 
-                      'edge_pen': self.lambda_3 * edge_pen.item()}
 
             total_loss.backward()
 
             if (i+1) % self.samples_per_param == 0:
                 self.optimizer.step()
                 self.optimizer.zero_grad()
-            i += 1
+            
+            running_total_loss += total_loss.item()
+            running_pred_loss += pred_loss.item()
+            running_match_loss += match_loss.item()
+            running_edge_pen += edge_pen.item()
 
-            return result
+        result = {
+            'total_loss': running_total_loss / len(self.obs_loader),
+            'pred_loss': running_pred_loss / len(self.obs_loader),
+            'match_loss': running_match_loss / len(self.obs_loader),
+            'edge_pen': running_edge_pen / len(self.obs_loader)
+        }
+        
+        return result
 
     def per_epoch_logger(self, result, epoch):
         self.writer.add_scalar("Total Loss", result['total_loss'], epoch)
