@@ -12,10 +12,18 @@ sys.path.append(repo_dir)
 import pickle
 import argparse
 import json
+import numpy as np
 
 from egg_models.egg_soft import EggSoft, EggSoftTrainer
 from egg_models.losses import PredLossBatched, MatchingLoss
 from utils import ceograph
+
+# fix random seeds for reproducibility
+SEED = 123
+torch.manual_seed(SEED)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = True 
+np.random.seed(SEED)
 
 # %%
 if __name__ == '__main__':
@@ -105,6 +113,9 @@ if __name__ == '__main__':
                              target, pred_loss_fn, struct_loss_fn, optimizer,
                              tensorboard_path, checkpoint_path, save_every,
                              samples_per_param=samples_per_param, 
-                             lambda_1=lambda_1, lambda_2=lambda_2, lambda_3=lambda_3) 
+                             lambda_1=lambda_1, lambda_2=lambda_2, lambda_3=lambda_3, 
+                             # TODO: Potential shape bug -- when prediction errors? 
+                             #reinforce_pred=True, reinforce_struct=True
+                             ) 
 
     trainer.train(num_epochs, opt.resume_path, profile_dir)
