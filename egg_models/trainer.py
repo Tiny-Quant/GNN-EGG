@@ -163,7 +163,7 @@ class BaseTrainer:
     
     def save_checkpoint(self, epoch, total_epochs):
 
-        if epoch % self.save_every == 0 or epoch == total_epochs: 
+        if epoch % self.save_every == 0 or epoch == total_epochs - 1: 
             checkpoint = {
                 'epoch': epoch,
                 'generator_state_dict': self.model.state_dict(),
