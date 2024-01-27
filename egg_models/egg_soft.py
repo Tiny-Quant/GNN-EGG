@@ -168,6 +168,9 @@ class EggSoftTrainer(BaseTrainer):
                                             generated['E_hard'])
             pred_loss = self.pred_loss(nuclei_batch).mean(dim=1)
 
+            # print(pred_loss.shape)
+            # print(generated['C_x_logLik'].shape)
+
             if self.reinforce_pred:
                 pred_loss = (pred_loss.mean() + 
                              (1 / pred_loss) @ 
@@ -189,7 +192,10 @@ class EggSoftTrainer(BaseTrainer):
             else: 
                 match_loss = match_loss.mean()
             
-            edge_pen = torch.norm(self.model.AdjacencyMatrix.probs, p=2)
+            edge_pen = (torch.norm(self.model.AdjacencyMatrix.probs, p=2) + 
+                        nn.functional.softplus(
+                            self.model.AdjacencyMatrix.probs.sum() - 
+                            (2 * self.model.node_size)) ** 2)
 
             total_loss = (self.lambda_1 * pred_loss +
                           self.lambda_2 * match_loss + 
@@ -202,9 +208,9 @@ class EggSoftTrainer(BaseTrainer):
                 self.optimizer.zero_grad()
             
             running_total_loss += total_loss.item()
-            running_pred_loss += pred_loss.item()
-            running_match_loss += match_loss.item()
-            running_edge_pen += edge_pen.item()
+            running_pred_loss += self.lambda_1 * pred_loss.item()
+            running_match_loss += self.lambda_2 * match_loss.item()
+            running_edge_pen += self.lambda_3 * edge_pen.item()
 
         result = {
             'total_loss': running_total_loss / len(self.obs_loader),
