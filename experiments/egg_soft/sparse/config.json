@@ -8,7 +8,7 @@
     "samples_per_param": 50, 
     "pred_weight": 0.5, 
     "struct_weight": 20, 
-    "sparsity_weight": 1, 
+    "sparsity_weight": 5, 
     "target_name": "sc",
     "obs_path": "data/slides/LUSC/tcga_lusc_train.pkl", 
     "tensorboard_path": "experiments/egg_soft/sparse/tensorboard", 
