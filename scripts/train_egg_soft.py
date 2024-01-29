@@ -45,23 +45,28 @@ if __name__ == '__main__':
     config_path = opt.path_to_json_config
     with open(config_path) as f:
         config_data = json.load(f)
+        
+    for key in config_data.keys():
+        value = config_data.get(key)
+        
+        globals()[key] = value
 
-    num_epochs = config_data["num_epochs"]
-    learning_rate = config_data["learning_rate"]
-    optimizer_name = config_data["optimizer_name"]
-    batch_size = config_data["batch_size"]
-    max_nodes = config_data["max_nodes"]
-    obs_node_limit = config_data["obs_node_limit"]
-    samples_per_param = config_data["samples_per_param"]
-    target_name = config_data["target_name"]
-    lambda_1 = config_data["pred_weight"]
-    lambda_2 = config_data["struct_weight"]
-    lambda_3 = config_data["sparsity_weight"]
-    obs_path = config_data["obs_path"]
-    tensorboard_path = config_data["tensorboard_path"]
-    checkpoint_path = config_data["checkpoint_path"]
-    save_every = config_data["save_every"]
-    profile_dir = config_data.get('profile_dir') 
+    # num_epochs = config_data["num_epochs"]
+    # learning_rate = config_data["learning_rate"]
+    # optimizer_name = config_data["optimizer_name"]
+    # batch_size = config_data["batch_size"]
+    # max_nodes = config_data["max_nodes"]
+    # obs_node_limit = config_data["obs_node_limit"]
+    # samples_per_param = config_data["samples_per_param"]
+    # target_name = config_data["target_name"]
+    # lambda_1 = config_data["pred_weight"]
+    # lambda_2 = config_data["struct_weight"]
+    # lambda_3 = config_data["sparsity_weight"]
+    # obs_path = config_data["obs_path"]
+    # tensorboard_path = config_data["tensorboard_path"]
+    # checkpoint_path = config_data["checkpoint_path"]
+    # save_every = config_data["save_every"]
+    # profile_dir = config_data.get('profile_dir') 
 
     device = torch.device(0)
 
@@ -90,7 +95,7 @@ if __name__ == '__main__':
 
     generator = EggSoft(node_size=max_nodes, cont_node_feat=CONT_NODE_FEATS, 
                         node_types=CELL_TYPES, cont_edge_feat=CONT_EDGE_FEAT, 
-                        batch_size=batch_size)
+                        batch_size=batch_size, temp_1=0.1, temp_2=0.1)
 
     generator.to(device) 
     generator.train()
