@@ -195,7 +195,7 @@ class EggSoftTrainer(BaseTrainer):
             edge_pen = (torch.norm(self.model.AdjacencyMatrix.probs, p=2) + 
                         nn.functional.softplus(
                             self.model.AdjacencyMatrix.probs.sum() - 
-                            (2 * self.model.node_size)) ** 2)
+                            (self.model.node_size)) ** 2)
 
             total_loss = (self.lambda_1 * pred_loss +
                           self.lambda_2 * match_loss + 
