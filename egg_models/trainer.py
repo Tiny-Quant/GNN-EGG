@@ -176,8 +176,8 @@ class BaseTrainer:
 
         if resume_path is not None:
             last_checkpoint = torch.load(resume_path)
-            self.mode.load_state_dict(
-                last_checkpoint['model_state_dict']
+            self.model.load_state_dict(
+                last_checkpoint['generator_state_dict']
             )
             self.optimizer.load_state_dict(
                 last_checkpoint['optimizer_state_dict']
