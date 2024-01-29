@@ -146,11 +146,12 @@ class BinaryConcrete(nn.Module):
             nn.init.uniform_(
                 torch.empty((self.num_rows, self.num_cols)),
                 0.0, 1.0
-            ).fill_diagonal_(0.0) # no self-loops.
+            )
         )
 
     def forward(self):
-        dist = td.RelaxedBernoulli(self.temp, probs=self.probs.clamp(0.0, 1.0))
+        adj_probs = self.probs.fill_diagonal_(0).clamp(0.0, 1.0)
+        dist = td.RelaxedBernoulli(self.temp, probs=adj_probs)
         sample = dist.rsample([self.batch_size])
         logLik = dist.log_prob(sample).sum(dim=(1, 2))
         return sample, logLik
