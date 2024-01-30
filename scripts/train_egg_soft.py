@@ -123,4 +123,4 @@ if __name__ == '__main__':
                              #reinforce_pred=True, reinforce_struct=True
                              ) 
 
-    trainer.train(num_epochs, opt.resume_path, profile_dir)
+    trainer.train(num_epochs, opt.resume_path, None)

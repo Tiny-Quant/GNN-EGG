@@ -13,6 +13,5 @@
     "obs_path": "data/slides/LUSC/tcga_lusc_train.pkl", 
     "tensorboard_path": "experiments/egg_soft/sparse/tensorboard", 
     "checkpoint_path": "experiments/egg_soft/sparse/checkpoints", 
-    "save_every": 10, 
-    "profile_run": false
+    "save_every": 10
 }
