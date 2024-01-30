@@ -150,8 +150,9 @@ class BinaryConcrete(nn.Module):
         )
 
     def forward(self):
-        adj_probs = self.probs.fill_diagonal_(0).clamp(0.0, 1.0)
-        dist = td.RelaxedBernoulli(self.temp, probs=adj_probs)
+        self.probs.data.fill_diagonal_(0)
+        self.probs.data.clamp_(0.0, 1.0)
+        dist = td.RelaxedBernoulli(self.temp, probs=self.probs)
         sample = dist.rsample([self.batch_size])
         logLik = dist.log_prob(sample).sum(dim=(1, 2))
         return sample, logLik
