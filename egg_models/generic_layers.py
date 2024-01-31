@@ -88,8 +88,12 @@ class ConcreteLayer(nn.Module):
         )
     
     def forward(self):
+        # validate_args=False
+        # https://github.com/pyro-ppl/pyro/issues/1640: Suspected Precision Issue 
+        # Caused by low temp parameter? 
         dist = td.RelaxedOneHotCategorical(
-            self.temp, probs=torch.softmax(self.probs, dim=0)
+            self.temp, probs=torch.softmax(self.probs, dim=0), 
+            validate_args=False
         )
         sample = dist.rsample(
             (self.batch_size, self.num_obs)
