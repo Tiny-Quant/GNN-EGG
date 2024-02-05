@@ -11,7 +11,7 @@
     "lambda_3": 0.0001, 
     "target_name": "sc",
     "obs_path": "data/slides/LUSC/tcga_lusc_train.pkl", 
-    "tensorboard_path": "experiments/egg_soft/sparse/tensorboard", 
-    "checkpoint_path": "experiments/egg_soft/sparse/checkpoints", 
+    "tensorboard_path": "experiments/egg_soft/sparse_2/tensorboard", 
+    "checkpoint_path": "experiments/egg_soft/sparse_2/checkpoints", 
     "save_every": 10
 }
