@@ -1,0 +1,13 @@
+name: egg-env-38
+channels:
+  - defaults
+dependencies:
+  - python=3.8
+  - torchvision
+  - pytorch
+  - torchaudio
+  - pytorch-cuda=11.7
+  - pyg
+  - conda-forge::openslide
+  - conda-forge::openslide-python
+  - numexpr
