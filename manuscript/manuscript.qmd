@@ -1,0 +1,28 @@
+---
+title: "**GNN-EGG**: Graph Neural Network Explanations *via* Graph Generation"
+author: "Art Tay"
+format:
+  pdf:
+     documentclass: article
+     papersize: letter
+     geometry:
+         margin=1in
+     include-in-header: header.tex
+bibliography: references.bib
+---
+
+# Abstract 
+
+\begin{center}
+Keywords: Graph Neural Networks, Interpretable AI 
+\end{center}
+
+# Introduction 
+
+# Related Work
+
+# Methodology 
+
+# Results 
+
+# References 
