@@ -121,7 +121,8 @@ gradient backpropagation with respect to their corresponding
 parameters. This issue can be mitigated in two ways. First, the 
 remaining two loss function terms do not involve the `explainee` 
 directly and are designed to use the `generator` output without 
-transformation. Second, a REINFORCE [@Williams_1992] term can be added based on 
+transformation [Discuss edge weights here]. 
+Second, a REINFORCE [@Williams_1992] term can be added based on 
 the likelihood of the generating distributions. For example if the $A'$ 
 transformation is required, for following term can be added to ensure 
 training of the edge probabilities.  
@@ -150,11 +151,11 @@ of edges that we desire on generated examples.
 Structurally consistency is the hardest to train, but arguable the most 
 important property for an example to have. Most GNN use a message passing 
 paradigm followed by pooling and dense prediction layers. The idea is to 
-use the graph's structure to engineer a better node features to draw 
+use the graph's structure to engineer better node features to draw 
 predictions. This principle exposes a flaw in the generation scheme. 
 If the generator is allowed to train the node features directly, it becomes 
-likely that the generator will ignore the graph structure and leap to training  
-itself to generate the final features needed for prediction.
+likely that the generator will ignore the graph structure and leap to training 
+the final features needed instead.
 
 [A good example of this happening is that a model training only the 
 node features, with all else random, was able to produce and 
@@ -165,9 +166,31 @@ Using embeddings in addition to the prediction can mitigate this problem;
 however, it is possible that embeddings could also be subject to this problem. 
 For large graphs, there is a considerable amount of information that can be 
 unrepresented in the latent vector. Two graphs could be very different on the 
-graph level, but have very similar embeddings. Furthermore, measurements 
-of similarity of the latent space aren't readily interpretable by humans making 
-is harder to evaluate and compare the realism of the generated data.  
+graph level, but have very similar embeddings [include example?]. 
+Furthermore, measurements of similarity of the latent space aren't readily 
+interpretable by humans making is harder to evaluate and compare the realism of 
+the generated data. Another proposed solution is to evaluate the reconstruction 
+using a discriminator [@De_Cao_Kipf_2022]. While more interpretable than 
+metrics on the latent space, discriminators suffer from the issue of 
+non-identifiability. In other words, a desirable misclassification rate 
+could be the result of a poor discriminator instead of a good generator.
+
+Our proposed solution is to use an approximation to the graph edit distance (GED). 
+GED measures the similarity between two graphs by counting the minimum number 
+of edits required to make the graphs isomorphic (or subgraph isomorphic). 
+This has the advantage of being human interpretable. [Ex: Being able to say that 
+10 out of 100 nodes and edges need to be edit for the graphs to be identical
+(ie the graph match 90%)
+should be more informative than a cosine distance in the latent space for 
+most applications.] Problematically, finding the exact optimal GED is a known 
+NP-complete problem, which makes it infeasible for large graph or complex 
+training algorithms [@Bougleux_Brun_Carletti_Foggia_Gaüzère_Vento_2015]. 
+Furthermore, most exact algorithm aren't differentiable, which would 
+necessitate slower optimization methods. Fortunately, approximating GED as a 
+quadratic assignment problem (QAP) solves before the complexity and derivative 
+issue [@wang2024pygm]. 
+
+
 
 # Results 
 
