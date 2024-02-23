@@ -1,4 +1,6 @@
 # %%
+from typing import Tuple
+
 import torch 
 
 # %%
@@ -14,10 +16,10 @@ def concat_possible_none_tensors(tensor1: torch.tensor, tensor2: torch.tensor,
         return tensor2
 
     else: 
-        return torch.cat(tensor1, tensor2, dim=dim)
+        return torch.cat((tensor1, tensor2), dim=dim)
 
 # %%
-def concat_one_hot_to_labels(one_hot: torch.tensor, indices: tuple[int]):
+def concat_one_hot_to_labels(one_hot: torch.tensor, indices: Tuple[int]):
 
     ret = []
     start = 0

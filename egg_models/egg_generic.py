@@ -69,7 +69,7 @@ class EggGeneric(nn.Module):
             for i, dist_feats in enumerate(self.dis_edge_feats):
                 self.DisEdgeFeats.append(
                     ConcreteLayer(
-                        self.batch_size, self.max_node_size, dist_feats, 
+                        self.batch_size, self.max_node_size**2, dist_feats, 
                         self.temp
                     )
                 )
