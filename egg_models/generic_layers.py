@@ -154,7 +154,7 @@ class BinaryConcrete(nn.Module):
         )
 
     def forward(self):
-        self.probs.data.fill_diagonal_(0.0)
+        #self.probs.data.fill_diagonal_(0.0)
         self.probs.data.clamp_(0.0, 1.0)
         dist = td.RelaxedBernoulli(self.temp, probs=self.probs)
         sample = dist.rsample([self.batch_size])
