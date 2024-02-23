@@ -1,3 +1,17 @@
+# Guiding Philosophy
+
+1. GNN-EGG should work with any torch_geometric explainee model and dataloader. 
+
+2. Users should only have to interact with `..._train_script.py` and 
+`config.json`.
+
+3. At most, only one `...train_script.py` file should be required per 
+explainee model. 
+
+4. `config.json` should not effect the model architecture. Options should only
+effect hyperparameters that could vary from different runs of 
+`..._train_script.py`.
+
 # File Structure
 
 ```
