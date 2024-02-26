@@ -35,10 +35,9 @@ where $c$ and $d$ denote continuous and one-hot discrete features.
 ## Generation
 
 $X_c$ and $E_c$ can both be sampled from any function with the form:
-$$
+\begin{equation}
     f(z\ ; \ \Omega): \mathbb{R}^Z \to \mathbb{R}^{dim}
-$$
-Where $z$ is a random, $\Omega$ is a set of potentially trainable parameters, 
+\end{equation}
 and $dim$ denotes the dimensionality of the matrix we want to generate. $z$ 
 could be sampled as pure random noise, but $z$ could also be a function 
 of the data. In most instances, we generate continuous feature matrices 
@@ -53,22 +52,22 @@ $\theta_{\text{Cat}}$, a trainable parameter vector of length equal to
 the number of categories, and $\tau$, a hyperparameter that controls 
 the degree of relaxation (smaller value approximate the discrete 
 sampling better, but can result in numerical issues). 
-$$
+\begin{equation}
     \text{Softmax}
     \left(
         \dfrac{\theta - log(-log \ \epsilon)}{\tau}
     \right), \quad \epsilon \sim U[0, 1]
-$$
+\end{equation}
 Like $z$, $\theta_{\text{Cat}}$ could be a function of the data and other 
 trainable parameters. One concrete distribution would be required per 
 discrete feature.  
 
 Similarly, the adjacency matrix can be sampled from the *binary concrete 
 distribution*:
-$$
+\begin{equation}
     \text{sigmoid}
         \left(\dfrac{\theta + \log \ \epsilon - \log(1 - \log \ \epsilon)}{\tau} \right)
-$$
+\end{equation}
 Identical to @Wang_Shen_2023, set $\theta$ to be the same 
 dimensionality as $A$, where each entry in $\theta$ is the probability 
 that an edge exists between nodes $i$ and $j$. 
@@ -105,10 +104,10 @@ Let `explainee()` be the GNN model we want to explain. Let
 $g()$ represent the embedding layers and $h()$ represent 
 the dense predictions layers. $g()$ is assumed to return a vectorization 
 of a graph, and $h()$ is assumed to return a class probability vector. 
-$$
+\begin{equation}
     \mathcal{L}_p = \text{distance}(g(G), \psi) + 
         \text{Cross-Entropy}(h(g(G)), t)
-$$
+\end{equation}
 $t$ denotes the desired prediction, and $\psi$ can either be the 
 average embedding for the target class, like @Wang_Shen_2023 or 
 a particular observation.
@@ -126,9 +125,9 @@ Second, a REINFORCE [@Williams_1992] term can be added based on
 the likelihood of the generating distributions. For example if the $A'$ 
 transformation is required, for following term can be added to ensure 
 training of the edge probabilities.  
-$$
+\begin{equation}
 \mathbfcal{L}_{R} = -\dfrac{l(\theta_A \ | \ G)}{\mathcal{L}}
-$$  
+\end{equation} 
 Here $\mathcal{L}$ denotes the sum of all other loss terms and 
 $l$ denotes the log-likelihood. In short, this term moves $\theta_A$ to move
 the likelihood of $G$ proportional to the inverse of the loss ie if 
@@ -140,9 +139,9 @@ likelihood of $G$ and vice-a-versa.
 Regularization the probability of edges existing will increase sparsity in terms 
 of edges, and nodes if we remove any that become *isolated*. Identical to 
 the regularization done in @Wang_Shen_2023, we add the following term. 
-$$
+\begin{equation}
 \mathcal{L}_s = ||\theta_A||^2 + \text{softplus}(||\text{sigmoid}||_1 - B)^2
-$$
+\end{equation}
 $B$ here is usually called the budget. It represents a ceiling on the number 
 of edges that we desire on generated examples. 
 
@@ -193,5 +192,75 @@ issue [@wang2024pygm].
 
 
 # Results 
+
+# Notes/Ideas/Future Directions
+
+## Graph Sub-Sampling Methods
+
+"GraphSAINT follows the design philosophy of directly sampling the training graph G, rather than the corresponding GCN. Our goals are to 1. extract appropriately connected subgraphs so that little information is lost when propagating within the subgraphs, and 2. combine information of many subgraphs together so that the training process overall learns good representation of the full graph" [@Zeng_Zhou_Srivastava_Kannan_Prasanna_2020].
+
+## Graph Sub-Sampling + Inverse Weighting 
+
+Let $[G_1, \dots, G_n]$ be the set of observed graphs. Let $G_{s(i, j)}$ 
+denote the $i^{th}$ sub-sample of the $j^{th}$ observed graph. 
+Let $G_{gk}$ represent the $k^{th}$ generated graph, 
+where $k \in [1 \dots i+j]$. 
+Let $\text{explainee}(G) = \rho, \ h$ denote the prediction and embedding 
+vectors respectively. Let $\rho_t$ denote the prediction vector of the 
+target class and $\rho_u$ denote an *uninformative* prediction. 
+
+\begin{align}
+    \gamma &= \text{CrtEnt}(\rho_t, \ \rho_u) \geq 0 \\  
+    \omega &= \dfrac{\lambda_1}{\gamma - 
+        \text{CrtEnt}(\rho_t, \ \rho_{s(i, j)}) + \epsilon} \\ 
+    \mathcal{L}_{\text{dist}} &= \dfrac{1}{i +j} \sum_{i=1}^n \sum_{j=1}^m
+        \text{dist}(h_{s(i, j)}, \ h_{gi+j}) + 
+        \text{match}(G_{s(i, j)}, \ G_{gi+j}) 
+\end{align}
+
+- If the sub-graph prediction $\rho_{s(i, j)}$ is better than the 
+uninformative prediction, then 
+$$
+\text{CrtEnt}(\rho_t, \rho_{s(i,j)}) < \gamma \Rightarrow
+    \omega \geq 0 \Rightarrow \text{argmin} \ \mathcal{L}_{\text{dist}}
+$$
+
+- If the sub-graph prediction is worse than the uninformative prediction, then 
+$$
+\text{CrtEnt}(\rho_t, \rho_{s(i,j)}) > \gamma \Rightarrow
+    \omega < 0 \Rightarrow \text{argmax} \ \mathcal{L}_{\text{dist}}
+$$
+
+**Potential Advantages:**
+
+1. Solves the large graph memory issue. 
+2. Creates more training samples. 
+Sub-sampling and observed graphs don't have to be split be class.  
+3. Weights the samples based on the models confidence. 
+4. Moves the generator towards good samples and away from bad samples.  
+
+**Potential Disadvantages:** 
+
+1. Selection bias. 
+2. Information loss.  
+
+## Best Sub-Graph Match for Visualization
+
+Let $G$ be an observed graph. Let $[G_{s1} \dots G_{sm}]$ be the set of 
+sub-graph samples taken from graph $G$. Let $G_g$ be a generated explanation 
+graph. Then, 
+$$
+\text{match}(G, G_g) \approx 
+    \max \ \{\text{match}(G_g, \ G_{si}) \ | \ i \in [1, \ m] \}
+$$
+
+## Future Directions
+
+- Generate graph with $\rho_u$ as the target. Analyze generated graphs that 
+the model is most unsure about ie what are the model's weaknesses. 
+
+- Tighten the generator distribution. Within a given batch select the generated 
+graph with the best score (lowest loss so far), then add a matching loss term 
+between all other generated graphs and the best one. 
 
 # References 
