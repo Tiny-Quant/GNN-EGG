@@ -30,3 +30,31 @@ def concat_one_hot_to_labels(one_hot: torch.tensor, indices: Tuple[int]):
     label_tensors = [torch.argmax(t, dim=2, keepdim=True) for t in ret]
 
     return torch.stack(label_tensors, dim = 2).squeeze(-1)
+
+
+# %%
+def subset_tensor(tensor: torch.tensor, indices: Tuple[any], 
+                  dim: int) -> torch.tensor:
+    # Convert single indices to tuples for uniform handling
+    if isinstance(indices, int):
+        indices = (indices,)
+    
+    # Initialize slices for all dimensions
+    sliced_indices = [slice(None)] * tensor.dim()
+    
+    # Update indices along the specified dimension
+    selected_indices = []
+    for idx in indices:
+        if isinstance(idx, int):
+            selected_indices.append(idx)
+        elif isinstance(idx, slice):
+            selected_indices.extend(range(*idx.indices(tensor.size(dim))))
+        else:
+            raise ValueError("Invalid index type")
+    
+    # Construct the sliced indices for the specified dimension
+    sliced_indices[dim] = selected_indices
+    
+    return tensor[tuple(sliced_indices)]
+
+# %%
