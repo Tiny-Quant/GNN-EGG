@@ -110,7 +110,7 @@ class EggGeneric(nn.Module):
             C_x = torch.cat(C_x, dim=2)
             C_x_logLik = torch.stack(C_x_logLik, dim=1)
         else: 
-            C_x, C_x_logLik = None, torch.tensor([0])
+            C_x, C_x_logLik = None, torch.tensor([0]) # TODO: magic number; potential bug.
 
         if self.cont_edge_feats is not None:
             E = self.ContEdgeFeats()
@@ -126,7 +126,7 @@ class EggGeneric(nn.Module):
             C_e = torch.cat(C_e, dim=2)
             C_e_logLik = torch.stack(C_e_logLik, dim=1)
         else: 
-            C_e, C_e_logLik = None, torch.tensor([0])
+            C_e, C_e_logLik = None, torch.tensor([0]) # TODO: magic number; potential bug.
     
         A, A_logLik = self.AdjacencyMatrix()
         edge_indices, edge_weights, _ = dense_to_sparse(A)
@@ -284,6 +284,7 @@ class EggGenericTrainer(BaseTrainer):
                            gen_ex_format: List[torch.tensor], 
                            obs_egg_format: List[torch.tensor]) -> torch.tensor:
 
+        # TODO: Add distance from average class embedding. 
         pred_loss = PredLossBatched(gen_ex_format).mean(dim=1)
 
         if self.reinforce_pred:
@@ -303,6 +304,9 @@ class EggGenericTrainer(BaseTrainer):
                         self.model.AdjacencyMatrix.probs.sum() - 
                         (self.edge_budget)) ** 2)
 
+       # TODO compute matching loss.  
+
+       # TODO compute embedding distance. 
 
     def train_one_epoch(self): 
 

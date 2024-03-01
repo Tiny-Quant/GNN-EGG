@@ -19,6 +19,9 @@ def concat_possible_none_tensors(tensor1: torch.tensor, tensor2: torch.tensor,
         return torch.cat((tensor1, tensor2), dim=dim)
 
 # %%
+# TODO: add_possible_none_tensor helper function.
+
+# %%
 def concat_one_hot_to_labels(one_hot: torch.tensor, indices: Tuple[int]):
 
     ret = []

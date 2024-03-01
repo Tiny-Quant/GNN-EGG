@@ -145,7 +145,8 @@ if __name__ == '__main__':
         X_list = [graph.x for graph in data_list]
         A_list = [graph.edge_index for graph in data_list]
         E_list = [graph.edge_attr for graph in data_list]
-
+        
+        # TODO: Also return feature type indices for matching function. 
         return [build_batch(X_list), build_batch(A_list), build_batch(E_list)]
         
     def egg_to_egg(self, generated: dict) -> List[torch.tensor]: 
