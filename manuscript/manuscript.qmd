@@ -68,7 +68,7 @@ distribution*:
     \text{sigmoid}
         \left(\dfrac{\theta + \log \ \epsilon - \log(1 - \log \ \epsilon)}{\tau} \right)
 \end{equation}
-Identical to @Wang_Shen_2023, set $\theta$ to be the same 
+Identical to [@Wang_Shen_2023], set $\theta$ to be the same 
 dimensionality as $A$, where each entry in $\theta$ is the probability 
 that an edge exists between nodes $i$ and $j$. 
 
@@ -202,20 +202,26 @@ issue [@wang2024pygm].
 ## Graph Sub-Sampling + Inverse Weighting 
 
 Let $[G_1, \dots, G_n]$ be the set of observed graphs. Let $G_{s(i, j)}$ 
-denote the $i^{th}$ sub-sample of the $j^{th}$ observed graph. 
-Let $G_{gk}$ represent the $k^{th}$ generated graph, 
-where $k \in [1 \dots i+j]$. 
+denote the $j^{th} \in [1, \dots, m]$ sub-sample of the 
+$i^{th} \in [1, \dots, n]$ observed graph. 
+Let $G_{g(i, j)}$ represent the corresponding generated graph. 
 Let $\text{explainee}(G) = \rho, \ h$ denote the prediction and embedding 
 vectors respectively. Let $\rho_t$ denote the prediction vector of the 
 target class and $\rho_u$ denote an *uninformative* prediction. 
 
 \begin{align}
-    \gamma &= \text{CrtEnt}(\rho_t, \ \rho_u) \geq 0 \\  
-    \omega &= \dfrac{\lambda_1}{\gamma - 
-        \text{CrtEnt}(\rho_t, \ \rho_{s(i, j)}) + \epsilon} \\ 
-    \mathcal{L}_{\text{dist}} &= \dfrac{1}{i +j} \sum_{i=1}^n \sum_{j=1}^m
-        \text{dist}(h_{s(i, j)}, \ h_{gi+j}) + 
-        \text{match}(G_{s(i, j)}, \ G_{gi+j}) 
+    \gamma &= \text{CrtEnt}(\rho_t, \ \rho_u) \in [0, \infty) \\  
+    \omega &= 
+        \begin{cases} 
+            \dfrac{\lambda_1}{\gamma - 
+            \text{CrtEnt}(\rho_t, \ \rho_{s(i, j)})} 
+            , \ \ &\text{ if } 
+                \gamma = \text{CrtEnt}(\rho_t, \ \rho_{s(i, j))} \\ 
+            -c \cdot \lambda_1, \ \ &\text{ otherwise.}
+        \end{cases} \\ 
+    \mathcal{L}_{\text{dist}} &= \dfrac{1}{nm} \sum_{i=1}^n \sum_{j=1}^m
+        \text{dist}(h_{s(i, j)}, \ h_{g(i, j)}) + 
+        \text{match}(G_{s(i, j)}, \ G_{g(i, j)}) 
 \end{align}
 
 - If the sub-graph prediction $\rho_{s(i, j)}$ is better than the 
