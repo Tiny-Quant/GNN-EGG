@@ -12,7 +12,7 @@ import sys
 from os.path import dirname, abspath
 repo_dir = dirname(dirname(abspath(__file__)))
 sys.path.append(repo_dir)
-import pickle
+import dill as pickle
 import argparse
 import json
 import numpy as np
@@ -59,6 +59,11 @@ if __name__ == '__main__':
     device = torch.device(0)
 
     # Model Level Parameters
+    PATH_TO_OBS_DATA = ""
+
+    with open(PATH_TO_OBS_DATA) as f:
+        obs_data_list = pickle.load(f)
+
     MAX_NODE_SIZE = 25
     CONT_NODE_FEATS = 11
     DIS_NODE_FEATS = (6)
@@ -87,9 +92,6 @@ if __name__ == '__main__':
 
         def ex_to_egg(self):
             return super().ex_to_egg()
-
-        def compute_loss_terms(self) -> torch.tensor:
-            return super().compute_loss_terms()
 
     # Load explainee. 
     explainee = ceograph.NucleiNet(CONT_NODE_FEATS, CONT_EDGE_FEATS, batch=True)
@@ -124,7 +126,7 @@ if __name__ == '__main__':
     else:
         raise ValueError(f"Unsupported optimizer: {optimizer_name}")
 
-   # Define trainer.  
+    # Define trainer.  
     trainer = SpecificTrainer(generator, explainee, obs_loader, 
                               optimizer, tensorboard_path, checkpoint_path, 
                               save_every=1, batches_per_param=1)
