@@ -5,6 +5,7 @@ from tqdm import tqdm
 import torch
 import torch.nn as nn 
 from torch.utils.data import DataLoader
+from torch_geometric.loader import GraphSAINTRandomWalkSampler
 from torch_geometric.data import Data, Batch
 
 
@@ -16,6 +17,7 @@ from egg_models.generic_layers import (
     ContFeatMatrix, ConcreteLayer, BinaryConcrete
 )
 from egg_models.base_trainer import BaseTrainer
+from egg_generic_losses import PredLossBatched
 from utils import misc
 
 # %% Generator Model 
@@ -108,7 +110,7 @@ class EggGeneric(nn.Module):
             C_x = torch.cat(C_x, dim=2)
             C_x_logLik = torch.stack(C_x_logLik, dim=1)
         else: 
-            C_x, C_x_logLik = None, None
+            C_x, C_x_logLik = None, torch.tensor([0])
 
         if self.cont_edge_feats is not None:
             E = self.ContEdgeFeats()
@@ -124,7 +126,7 @@ class EggGeneric(nn.Module):
             C_e = torch.cat(C_e, dim=2)
             C_e_logLik = torch.stack(C_e_logLik, dim=1)
         else: 
-            C_e, C_e_logLik = None, None
+            C_e, C_e_logLik = None, torch.tensor([0])
     
         A, A_logLik = self.AdjacencyMatrix()
         edge_indices, edge_weights, _ = dense_to_sparse(A)
@@ -148,17 +150,42 @@ class EggGeneric(nn.Module):
 class EggGenericTrainer(BaseTrainer):
     def __init__(self, 
                  model: EggGeneric, 
-                 obs_loader: DataLoader, 
+                 explainee: nn.Module, 
+                 target: torch.tensor, 
+                 obs_data_list: list, 
                  optimizer: torch.optim.Optimizer, 
+                 loss_term_weights: torch.tensor, 
                  tensorboard_path: str, 
                  checkpoint_path: str, 
                  save_every=1, 
+                 edge_budget=None, 
+                 reinforce_pred=False, 
+                 reinforce_struct=False,
+                 sub_sampler="default", 
+                 repeat_sampling=False, 
                  batches_per_param=1):
 
         super().__init__(model, optimizer, 
                          tensorboard_path, checkpoint_path, save_every)
 
-    def egg_to_ex(self, generated: dict): 
+        self.batch_size = self.model.batch_size
+        self.explainee = explainee
+        self.target = target
+
+        self.obs_data_list = obs_data_list
+        self.loss_term_weights = loss_term_weights
+        if edge_budget is None:
+            self.edge_budget = self.model.max_node_size
+        else: 
+            self.edge_budget = edge_budget
+
+        self.reinforce_pred = reinforce_pred
+        self.reinforce_struct = reinforce_struct
+        self.batches_per_param = batches_per_param
+        self.sub_sampler = sub_sampler
+        self.repeat_sampling = repeat_sampling
+
+    def egg_to_ex(self, generated: dict) -> Batch: 
 
         if generated['dis_node_feats'] is not None: 
             X = misc.concat_one_hot_to_labels(generated['dis_node_feats'], 
@@ -188,26 +215,102 @@ class EggGenericTrainer(BaseTrainer):
                          edge_attr.unbind()
                      )] 
 
-        return Batch().from_data_list(data_list)
+        return Batch.from_data_list(data_list)
 
-    def ex_to_egg(self): 
-        pass 
+    def ex_to_egg(self, obs_batch) -> List[torch.tensor]: 
+        # TODO: Write default function
+        return None
 
-    def compute_loss_terms(self) -> torch.tensor:
-        pass 
+    def egg_to_egg(self, generated: dict) -> List[torch.tensor]:
+        # TODO: Write default function
+        return None
 
-    def train_one_epoch(self, 
-                        loss_term_weights: torch.tensor, 
-                        loss_term_names: Optional[List[str]] = None):
 
-        if loss_term_names is None:
-            loss_term_names = []
-            for i in range(loss_term_weights.shape[0]):
-               loss_term_names.append("Loss Term " + (i + 1)) 
+    def create_data_loader(self):
+        if self.obs_data_loader is None | self.repeat_sampling: 
+
+            if self.sub_sampler is None: 
+                self.obs_data_loader = (
+                    DataLoader(self.obs_data_list, 
+                               batch_size=self.batch_size, 
+                               shuffle=True, drop_last=True)
+                )
+
+            elif self.sub_sampler == "default":
+                for graph in self.obs_data_list:  
+
+                    sub_sampler = (
+                        GraphSAINTRandomWalkSampler(graph, 
+                                                    batch_size=1,
+                                                    walk_length=400, 
+                                                    sample_coverage=400, 
+                                                    log=False
+                                                    num_steps=10)
+                    )
+
+                sub_samples = [] 
+
+                for batch in sub_sampler: 
+                    sub_samples.append(batch)
+
+                self.obs_data_loader = (
+                    DataLoader(sub_samples, 
+                               batch_size=self.batch_size, 
+                               shuffle=True, drop_last=True)
+                )
+
+            elif sub_sampler is not None: 
+                for graph in self.obs_data_list:  
+
+                    sub_sampler = self.sub_sampler
+
+                sub_samples = [] 
+
+                for batch in sub_sampler: 
+                    sub_samples.append(batch)
+
+                self.obs_data_loader = (
+                    DataLoader(sub_samples, 
+                               batch_size=self.batch_size, 
+                               shuffle=True, drop_last=True)
+                )
+
+        else: 
+            return None
+
+    def compute_loss_terms(self, 
+                           generated: dict, 
+                           obs_batch: Batch, 
+                           gen_ex_format: List[torch.tensor], 
+                           obs_egg_format: List[torch.tensor]) -> torch.tensor:
+
+        pred_loss = PredLossBatched(gen_ex_format).mean(dim=1)
+
+        if self.reinforce_pred:
+            pred_loss = (pred_loss.mean() + 
+                            (1 / pred_loss) @ 
+                            (-generated['C_x_logLik'] +  
+                             -generated['A_logLik'] + 
+                             -generated['C_e_logLik'])
+            )
+        
+        else: 
+            pred_loss = pred_loss.mean()
+
+
+        edge_pen = (torch.norm(self.model.AdjacencyMatrix.probs, p=2) + 
+                    nn.functional.softplus(
+                        self.model.AdjacencyMatrix.probs.sum() - 
+                        (self.edge_budget)) ** 2)
+
+
+    def train_one_epoch(self): 
 
         self.optimizer.zero_grad() 
         running_total_loss = 0
-        running_total_loss_terms = torch.zeros_like(loss_term_weights)
+        running_total_loss_terms = torch.zeros_like(self.loss_term_weights)
+
+        self.create_data_loader()
         for i, obs_batch in enumerate(tqdm(self.obs_loader, 
                                            desc="Observed Data", leave=False)): 
             
@@ -217,12 +320,16 @@ class EggGenericTrainer(BaseTrainer):
             
             obs_egg_format = self.ex_to_egg(obs_batch)
 
-            loss_terms = self.compute_loss_terms(gen_ex_format, obs_egg_format)
+            loss_terms = self.compute_loss_terms(generated, obs_batch, 
+                                                 gen_ex_format, 
+                                                 obs_egg_format)
 
             with torch.no_grad():
-                running_total_loss_terms += loss_terms
+                running_total_loss_terms += (
+                    loss_terms @ self.loss_term_weights.T
+                )
 
-            total_loss = loss_terms @ loss_term_weights.T
+            total_loss = loss_terms @ self.loss_term_weights.T
             total_loss.backward()
 
             if (i+1) % self.batches_per_param == 0:
@@ -237,6 +344,7 @@ class EggGenericTrainer(BaseTrainer):
 
         avg_loss_terms = running_total_loss_terms / len(self.obs_loader)
 
+        loss_term_names = ["Prediction", "Sparsity", "Structural"]
         for i, name in enumerate(loss_term_names):
             results[name] = avg_loss_terms[i]
 
