@@ -1,0 +1,11 @@
+// Not a valid json file. Remove comments before training. 
+{
+    // Required
+    "num_epochs": 1, 
+    "learning_rate": 0.001,
+    "optimizer_name": "name", // Any torch.optim.name
+    "tensorboard_path": "tensorboard/", 
+    "checkpoint_path": "checkpoints/"
+
+    // Optional
+}
