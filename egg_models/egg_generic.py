@@ -17,7 +17,7 @@ from egg_models.generic_layers import (
     ContFeatMatrix, ConcreteLayer, BinaryConcrete
 )
 from egg_models.base_trainer import BaseTrainer
-from egg_generic_losses import PredLossBatched
+from egg_models.egg_generic_losses import PredLossBatched
 from utils import misc
 
 # %% Generator Model 
@@ -88,9 +88,9 @@ class EggGeneric(nn.Module):
         returns: dict
             - cont_node_feats: torch.Size([b, n, f_1])
             - dis_node_feats: torch.Size([b, n, total_cats])
-            - cont_edge_feats: torch.Size([b, e, f_2])
+            - cont_edge_feats: torch.Size([b, n**2, f_2])
             - dis_edge_feats: torch.Size([b, n, total_cats])
-            - full_edge_indices: torch.Size([b, 2, e])
+            - full_edge_indices: torch.Size([b, 2, n**2])
             - adjacency_matrix: torch.Size([b, n, n])
             - C_x_logLik: torch.Size([b, f_3])
             - C_e_logLik: torch.Size([b, f_4])
@@ -244,7 +244,7 @@ class EggGenericTrainer(BaseTrainer):
                                                     batch_size=1,
                                                     walk_length=400, 
                                                     sample_coverage=400, 
-                                                    log=False
+                                                    log=False, 
                                                     num_steps=10)
                     )
 
