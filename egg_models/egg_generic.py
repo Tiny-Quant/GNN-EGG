@@ -110,7 +110,9 @@ class EggGeneric(nn.Module):
             C_x = torch.cat(C_x, dim=2)
             C_x_logLik = torch.stack(C_x_logLik, dim=1)
         else: 
-            C_x, C_x_logLik = None, torch.tensor([0]) # TODO: magic number; potential bug.
+            C_x = None 
+            C_x_logLik = torch.tensor([0.0]).repeat(self.batch_size)
+            # TODO: magic number; potential bug.
 
         if self.cont_edge_feats is not None:
             E = self.ContEdgeFeats()
@@ -126,7 +128,9 @@ class EggGeneric(nn.Module):
             C_e = torch.cat(C_e, dim=2)
             C_e_logLik = torch.stack(C_e_logLik, dim=1)
         else: 
-            C_e, C_e_logLik = None, torch.tensor([0]) # TODO: magic number; potential bug.
+            C_e = None
+            C_e_logLik = torch.tensor([0.0]).repeat(self.batch_size)
+            # TODO: magic number; potential bug.
     
         A, A_logLik = self.AdjacencyMatrix()
         edge_indices, edge_weights, _ = dense_to_sparse(A)
@@ -288,12 +292,18 @@ class EggGenericTrainer(BaseTrainer):
         pred_loss = PredLossBatched(gen_ex_format).mean(dim=1)
 
         if self.reinforce_pred:
-            pred_loss = (pred_loss.mean() + 
-                            (1 / pred_loss) @ 
-                            (-generated['C_x_logLik'] +  
-                             -generated['A_logLik'] + 
-                             -generated['C_e_logLik'])
+            # pred_loss = (pred_loss.mean() + 
+            #                 (1 / pred_loss) @ 
+            #                 (-generated['C_x_logLik'].sum(axis=1) +  
+            #                  -generated['A_logLik'].sum(axis=1) + 
+            #                  -generated['C_e_logLik'].sum(axis=1))
+            # )
+            pred_loss = pred_loss.mean() + (
+                ((1 / pred_loss) @ -generated['C_x_logLik']).sum() + 
+                ((1 / pred_loss) @ -generated['C_e_logLik']).sum() + 
+                ((1 / pred_loss) @ -generated['A_logLik']).sum()
             )
+
         
         else: 
             pred_loss = pred_loss.mean()
