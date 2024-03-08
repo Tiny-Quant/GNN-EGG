@@ -59,6 +59,10 @@ def gen_output2(generator2):
 
 # %% Helper Functions
 def check_grads_exist(loss: torch.tensor, model: torch.nn.Module, retain=False): 
+    """
+    Asserts that the gradients of all model parameters (except "device_param")
+    are not None. 
+    """
     loss.sum().backward(retain_graph=retain) # Sum ensures scalar loss. 
 
     for name, param in model.named_parameters():
@@ -69,7 +73,9 @@ def check_grads_exist(loss: torch.tensor, model: torch.nn.Module, retain=False):
             ) 
 
 def compare_grads(loss_1, loss_2, model, retain=False): 
-
+    """
+    Checks if to losses produce the same parameter gradients. 
+    """
     model.zero_grad()
     loss_1.backward(retain_graph=retain)
     grad_1 = []
@@ -107,6 +113,10 @@ def test_gen_shapes(gen_output):
     assert gen_output['cont_node_feats'].shape == (2, 10, 10)
 
 def test_none_logLik(generator2, gen_output2):
+    """
+    Tests the functionality of EggGeneric when discrete edge features are not 
+    requested. 
+    """
     loss_1 = (torch.tensor([1.0, 1.0]) @ gen_output2['C_x_logLik']).sum()
     loss_2 = (torch.tensor([1.0, 1.0]) @ gen_output2['C_e_logLik']).sum()
 
@@ -120,6 +130,7 @@ def test_none_logLik(generator2, gen_output2):
         )
     ) 
 
+    # Loss contribution of an un-requested feature is expected to be zero.
     assert(
         torch.equal(
             loss_2, 
@@ -129,4 +140,5 @@ def test_none_logLik(generator2, gen_output2):
 
     check_grads_exist(loss_1, generator2, retain=True)
 
+    # Double checks that adding 0 to the loss does change the gradients. 
     compare_grads(loss_3, loss_4, generator2, retain=True) 
