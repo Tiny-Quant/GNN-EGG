@@ -86,14 +86,20 @@ class EggGeneric(nn.Module):
     def forward(self):
         """
         returns: dict
-            - cont_node_feats: torch.Size([b, n, f_1])
-            - dis_node_feats: torch.Size([b, n, total_cats])
-            - cont_edge_feats: torch.Size([b, n**2, f_2])
-            - dis_edge_feats: torch.Size([b, n, total_cats])
+            b = batch_size
+            n = max_node_size
+            f1 = cont_node_feats
+            f2 = dis_node_feats 
+            f3 = cont_edge_feats
+            f4 = dis_edge_feats
+            - cont_node_feats: torch.Size([b, n, f1])
+            - dis_node_feats: torch.Size([b, n, sum(f2)])
+            - cont_edge_feats: torch.Size([b, n**2, f3])
+            - dis_edge_feats: torch.Size([b, n, sum(f4)])
             - full_edge_indices: torch.Size([b, 2, n**2])
             - adjacency_matrix: torch.Size([b, n, n])
-            - C_x_logLik: torch.Size([b, f_3])
-            - C_e_logLik: torch.Size([b, f_4])
+            - C_x_logLik: torch.Size([b, len(f2)])
+            - C_e_logLik: torch.Size([b, len(f4)])
             - A_logLik: torch.Size([b])
         """
         if self.cont_node_feats is not None:
@@ -112,7 +118,6 @@ class EggGeneric(nn.Module):
         else: 
             C_x = None 
             C_x_logLik = torch.tensor([0.0]).repeat(self.batch_size)
-            # TODO: magic number; potential bug.
 
         if self.cont_edge_feats is not None:
             E = self.ContEdgeFeats()
@@ -130,7 +135,6 @@ class EggGeneric(nn.Module):
         else: 
             C_e = None
             C_e_logLik = torch.tensor([0.0]).repeat(self.batch_size)
-            # TODO: magic number; potential bug.
     
         A, A_logLik = self.AdjacencyMatrix()
         edge_indices, edge_weights, _ = dense_to_sparse(A)

@@ -98,19 +98,26 @@ def compare_grads(loss_1, loss_2, model, retain=False):
         assert torch.allclose(grad1, grad2)
 
 # %% Tests
-def test_gen_shapes(gen_output):
+def test_gen_shapes(generator, gen_output):
     """
     Tests if the output create by test case I matches the expected and 
     documented tensor shapes.
     """
-    assert gen_output['dis_node_feats'].shape == (2, 10, 1 + 2 + 3)
-    assert gen_output['dis_edge_feats'].shape == (2, 100, 1 + 2)
-    assert gen_output['full_edge_indices'].shape == (2, 2, 10**2)
-    assert gen_output['adjacency_matrix'].shape == (2, 10, 10)
-    assert gen_output['C_x_logLik'].shape == (2, 3)
-    assert gen_output['C_e_logLik'].shape == (2, 2)
-    assert gen_output['A_logLik'].shape == (2,)
-    assert gen_output['cont_node_feats'].shape == (2, 10, 10)
+    b = generator.batch_size
+    n = generator.max_node_size
+    f1 = generator.cont_node_feats
+    f2 = generator.dis_node_feats 
+    f3 = generator.cont_edge_feats
+    f4 = generator.dis_edge_feats
+
+    assert gen_output['dis_node_feats'].shape == (b, n, 1 + 2 + 3)
+    assert gen_output['dis_edge_feats'].shape == (b, n**2, 1 + 2)
+    assert gen_output['full_edge_indices'].shape == (b, 2, n**2)
+    assert gen_output['adjacency_matrix'].shape == (b, n, n)
+    assert gen_output['C_x_logLik'].shape == (b, len(f2))
+    assert gen_output['C_e_logLik'].shape == (b, len(f4))
+    assert gen_output['A_logLik'].shape == (b,)
+    assert gen_output['cont_node_feats'].shape == (b, n, n)
 
 def test_none_logLik(generator2, gen_output2):
     """
@@ -142,3 +149,4 @@ def test_none_logLik(generator2, gen_output2):
 
     # Double checks that adding 0 to the loss does change the gradients. 
     compare_grads(loss_3, loss_4, generator2, retain=True) 
+
