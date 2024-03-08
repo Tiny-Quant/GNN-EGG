@@ -36,7 +36,8 @@ class ContFeatMatrix(nn.Module):
 class CatFeatVector(nn.Module):
     '''
     Generates a discrete feature vector sampled from a categorical distribution.
-    The parameters of the distribution defined to be trainable based on the logLik.
+    The parameters of the distribution defined to be trainable based on the 
+    logLik.
 
     returns a non-differentiable tensor of size [batch, obs, 1] and a 
     differentiable logLik tensor of size [batch].
@@ -72,6 +73,14 @@ class CatFeatVector(nn.Module):
 
 # %%
 class ConcreteLayer(nn.Module):
+    '''
+    Generates a one-hot feature matrix with each row sampled from a 
+    concrete distribution. The parameters of the distribution 
+    defined to be trainable based on the logLik.
+
+    returns a differentiable tensor of size [batch, obs, cats] and a 
+    differentiable logLik tensor of size [batch].
+    '''
     def __init__(self, batch_size, num_obs, num_cats, temp):
         super(ConcreteLayer, self).__init__()
 
@@ -105,11 +114,12 @@ class ConcreteLayer(nn.Module):
 # %%
 class BinaryMatrix(nn.Module):
     '''
-    Generates a matrix where each entry is sampled from an independent 
-    Bernoulli distribution (trainable parameters).
+    Generates a matrix where each entry is sampled from independent
+    Bernoulli distributions with trainable parameters equal to the sample size.
 
     returns a non-differentiable tensor of size [batch, num_rows, num_cols]
-    and a tensor containing the logLik of each matrix of size [batch].
+    and a differentiable tensor containing the joint logLik of each matrix 
+    of size [batch].
     '''
     def __init__(self, batch_size, num_rows, num_cols):
         super(BinaryMatrix, self).__init__()
@@ -139,6 +149,15 @@ class BinaryMatrix(nn.Module):
 
 # %%
 class BinaryConcrete(nn.Module):
+    '''
+    Generates a matrix where each entry is sampled from an independent 
+    Relaxed Bernoulli distributions with trainable parameters equal to 
+    the sample size.
+
+    returns a differentiable tensor of size [batch, num_rows, num_cols]
+    and a differentiable tensor containing the joint logLik of each matrix 
+    of size [batch].
+    '''
     def __init__(self, batch_size, num_rows, num_cols, temp):
         super(BinaryConcrete, self).__init__()
         self.batch_size = batch_size
