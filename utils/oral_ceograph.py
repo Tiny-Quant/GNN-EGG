@@ -4,6 +4,8 @@ import re
 import sys 
 sys.path.append("..")
 
+from typing import List
+
 # import matplotlib
 # import matplotlib.pyplot as plt
 import numpy as np
@@ -17,7 +19,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 # from torch.utils.data import DataLoader
 import torch_geometric
-from torch_geometric.data import Data, InMemoryDataset
+from torch_geometric.data import Data, InMemoryDataset, Batch
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn import GCNConv, NNConv, global_max_pool
 from torch_scatter import scatter_mean
@@ -366,7 +368,6 @@ def nuclei_to_data(G: NucleiData, num_cell_types: int):
     edge_attr = torch.cat((edge_attr, zero_pad), dim=0)
     edge_attr = torch.cat((edge_attr, edge_weights.squeeze(0) - 1e-8), dim=-1)
 
-
     return Data(node_matrix, edge_index, edge_attr)
 
 def get_edge_type_app(A, C_x):
@@ -384,3 +385,90 @@ def assign_edge_type(A, C_x):
         )
     
     return e_c
+
+def egg_to_ex(generated: dict):
+    """
+    Implementation of egg_to_ex for the trainer of an EggGeneric model 
+    for oral ceograph data. 
+    """
+    with torch.no_grad():
+        C_x_hard = torch.argmax(
+            generated['dis_node_feats'], dim=-1
+        ) + 1
+
+        A_hard = (generated['adjacency_matrix'] >= 0.5)
+        edge_index = dense_to_sparse(A_hard)[0].transpose(1, 2)
+        
+        edge_types = (assign_edge_type(edge_index, C_x_hard).
+                        to(edge_index.device))
+
+        E_hard = (generated['cont_edge_feats'].
+                    narrow(dim=1, start=0, length=edge_index.shape[2])
+        )
+        
+        edge_attr = torch.cat((edge_types, E_hard), dim=-1)
+
+    X = generated['cont_node_feats']
+    
+
+    nuclei_list = [NucleiData(x=X, cell_type=C_x, edge_index=A, edge_attr=E)
+                for (X, C_x, A, E) in zip(
+                    X.unbind(), C_x_hard.unbind(), 
+                    edge_index.unbind(), edge_attr.unbind()
+                )
+    ]
+
+    # TODO: Remove isolated nodes. 
+    # TODO: Remove self loops.
+
+    nuclei_batch = Batch.from_data_list(nuclei_list)
+
+    return nuclei_batch
+
+def ex_to_egg(obs_batch, num_cell_types) -> List[torch.tensor]:
+    """
+    Implementation of ex_to_egg for the trainer of an EggGeneric model 
+    for oral ceograph data. 
+    """
+
+    data_list = [nuclei_to_data(graph, num_cell_types)
+                for graph in obs_batch.to_data_list()
+    ]
+
+    X_list = [graph.x for graph in data_list]
+    A_list = [graph.edge_index for graph in data_list]
+    E_list = [graph.edge_attr for graph in data_list]
+
+    # TODO: Also return feature type indices for matching function. 
+    return [build_batch(X_list), build_batch(A_list), build_batch(E_list)]
+
+def egg_to_egg(self, generated: dict) -> List[torch.tensor]: 
+    """
+    Implementation of egg_to_egg for the trainer of an EggGeneric model 
+    for oral ceograph data. 
+    """
+    with torch.no_grad():
+        C_x_hard = torch.argmax(
+            generated['dis_node_feats'], dim=-1
+        ) + 1
+
+        A = generated['adjacency_matrix']
+        edge_index = dense_to_sparse(A)[0].transpose(1, 2)
+        
+        edge_types = (assign_edge_type(edge_index, C_x_hard).
+                        to(edge_index.device))
+
+    gen_X = torch.cat([
+        generated['cont_node_feats'], 
+        generated['dis_node_feats']
+    ], dim=-1)
+
+    gen_A = generated['full_edge_indices']
+
+    gen_E = torch.cat([
+    edge_types.to(gen_A.device), 
+    generated['cont_edge_feats'], 
+    generated['edge_weights']
+    ], dim=-1)
+
+    return [gen_X, gen_A, gen_E]

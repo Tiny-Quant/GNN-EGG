@@ -10,7 +10,20 @@ import torch
 
 from egg_models import egg_generic
 
+from utils import oral_ceograph
+
 # %% Fixture/Mocks/Data Test Cases
+@pytest.fixture
+def device():
+    """Fixture to set the device to CUDA if available, otherwise CPU."""
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+        print('CUDA is available! Using GPU.')
+    else:
+        device = torch.device('cpu')
+        print('CUDA is not available. Using CPU.')
+    return device
+
 @pytest.fixture
 def generator():
     """
@@ -44,6 +57,24 @@ def generator2():
     return mock_generator
 
 @pytest.fixture
+def generator_oral_ceograph(device):
+    """
+    Create test case oral ceograph for an EggGeneric generator model. 
+    """
+    mock_generator = egg_generic.EggGeneric(
+        max_node_size=10, 
+        cont_node_feats=11, 
+        cont_edge_feats=2, 
+        dis_node_feats=(4,), 
+        # dis_edge_feats=(1, 2), 
+        batch_size=2
+    )
+
+    mock_generator.to(device)
+
+    return mock_generator
+
+@pytest.fixture
 def gen_output(generator):
     """
     Output test case I for an EggGeneric generator model. 
@@ -56,6 +87,29 @@ def gen_output2(generator2):
     Output test case II for an EggGeneric generator model. 
     """
     return generator2()
+
+@pytest.fixture
+def gen_output_oral_ceograph(generator_oral_ceograph, device):
+    """
+    Output test case oral ceograph an EggGeneric generator model. 
+    """
+    generator_oral_ceograph.to(device)
+    return generator_oral_ceograph()
+
+@pytest.fixture
+def explainee_oral_ceograph(device):
+    """
+    Returns a mock explainee for an oral ceograph model. 
+    """
+    mock_explainee = oral_ceograph.NucleiNet(11, 2, batch=True)
+    mock_explainee.to(device)
+    mock_explainee.load_state_dict(
+        torch.load("data/explainees/HN/epoch_15.pt", map_location=device), 
+        strict=False
+    )
+    mock_explainee.eval()
+
+    return mock_explainee
 
 # %% Helper Functions
 def check_grads_exist(loss: torch.tensor, model: torch.nn.Module, retain=False): 
@@ -150,3 +204,18 @@ def test_none_logLik(generator2, gen_output2):
     # Double checks that adding 0 to the loss does change the gradients. 
     compare_grads(loss_3, loss_4, generator2, retain=True) 
 
+def test_oral_ceograph_egg_to_ex(gen_output_oral_ceograph, 
+                                 explainee_oral_ceograph):
+    """
+    Tests that the egg_to_ex function returns a tensor and that the forward 
+    pass through the explainee returns the expected shape.
+    """
+    egg_formatted_to_ex = oral_ceograph.egg_to_ex(gen_output_oral_ceograph)
+
+    assert egg_formatted_to_ex is not None
+
+
+    assert isinstance(explainee_oral_ceograph(egg_formatted_to_ex), 
+                                              torch.Tensor)
+    
+    assert explainee_oral_ceograph(egg_formatted_to_ex).shape == (2, 2)
