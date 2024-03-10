@@ -23,6 +23,53 @@ Keywords: Graph Neural Networks, Interpretable AI
 
 # Related Work
 
+# Preliminaries
+
+## Formal Definition of Generative Explanations
+
+Let the observed data be $(Y, X)$, where $Y$ is a class label or probability 
+vector for classes, and $X$ is a collection of corresponding features.
+Conventionally $Y$ is assumed to be a random variable and $X$ is fixed. 
+We are typically interested in model the distribution of $Y \ | \ X$.  
+Here we will assume the model takes the form of 
+\begin{equation}
+    f(Y \ | \ X) \approx g(X; \hat \beta) + \epsilon = \hat y 
+\end{equation}
+where $\epsilon$ is the prediction error. Usually the focus of interpretation 
+of this type of model if the distribution of $\hat \beta$, or the marginal 
+effects of $X$ on $Y$. In many cases $g$ is far to complex to derive clear 
+marginal effects, and interval estimates come at the cost of strong 
+parametric assumptions. Furthermore, the effects are ordinarily analyzed 
+independently; however, we would argue that this paradigm fails when $X$ has a 
+complex structure. For example, in image analysis, $\hat \beta$ estimates on 
+pixel values we do very little to help understand the model overall prediction 
+for the image. 
+
+We suggest that when $g$ and $X$ are complicated, researchers ought 
+to use generative explanations. Formally, this means assuming $X$ is a 
+random variable and attempting to model the distribution of $X \ | \ Y$.
+This is generally done using a model of the form: 
+\begin{equation}
+    f(X \ | \ Y) \approx h(Z; \Omega) + \epsilon = \hat X
+\end{equation}
+where $Z$ is random noise. Given a fit model $\hat g$, estimation $h$ can be 
+done using: 
+\begin{equation} 
+    \underset{\hat \Omega}{\text{argmax}} \ \ \hat g(h(z; \Omega); \hat \beta)
+\end{equation}
+where $\hat g$ here is assumed to return the probability of being a member of 
+the target class. 
+
+Generative explanation have 3 key advantages: 
+
+1. They incorporate information from all the observed instances as well as the 
+fit model.  
+
+2. Modeling a distribution allows for easy interval and uncertainty estimation.   
+
+3. The explanations are within the same domain as the data, which may be more 
+readily interpretable than marginal effects. 
+
 # Methodology 
 
 ## Notation
