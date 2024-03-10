@@ -121,17 +121,12 @@ class BinaryMatrix(nn.Module):
     and a differentiable tensor containing the joint logLik of each matrix 
     of size [batch].
     '''
-    def __init__(self, batch_size, num_rows, num_cols):
+    def __init__(self, batch_size, num_rows, num_cols, allow_self_loops=True):
         super(BinaryMatrix, self).__init__()
         self.batch_size = batch_size
         self.num_rows = num_rows
         self.num_cols = num_cols
-
-        # self.logits = nn.Parameter(
-        #     nn.init.xavier_normal_( # glorot initialization. 
-        #         torch.empty((self.num_rows, self.num_cols))
-        #     ).fill_diagonal_(-1e8)
-        # )
+        self.allow_self_loops = allow_self_loops
 
         self.probs = nn.Parameter(
             nn.init.uniform_(
@@ -141,10 +136,13 @@ class BinaryMatrix(nn.Module):
         )
 
     def forward(self):
-        # dist = td.Bernoulli(logits=self.logits)
+        if not self.allow_self_loops: 
+            self.probs.fill_diagonal_(0.0)
         dist = td.Bernoulli(probs=self.probs.clamp(0.0, 1.0))
+
         sample = dist.sample([self.batch_size])
         logLik = dist.log_prob(sample).sum(dim=(1, 2))
+
         return sample, logLik
 
 # %%
@@ -158,12 +156,14 @@ class BinaryConcrete(nn.Module):
     and a differentiable tensor containing the joint logLik of each matrix 
     of size [batch].
     '''
-    def __init__(self, batch_size, num_rows, num_cols, temp):
+    def __init__(self, batch_size, num_rows, num_cols, temp, 
+                 allow_self_loops):
         super(BinaryConcrete, self).__init__()
         self.batch_size = batch_size
         self.num_rows = num_rows
         self.num_cols = num_cols
         self.temp = torch.tensor(temp)
+        self.allow_self_loops = allow_self_loops
 
         self.probs = nn.Parameter(
             nn.init.uniform_(
@@ -173,9 +173,12 @@ class BinaryConcrete(nn.Module):
         )
 
     def forward(self):
-        #self.probs.data.fill_diagonal_(0.0)
+        if not self.allow_self_loops: 
+            self.probs.data.fill_diagonal_(0.0)
         self.probs.data.clamp_(0.0, 1.0)
         dist = td.RelaxedBernoulli(self.temp, probs=self.probs)
+
         sample = dist.rsample([self.batch_size])
         logLik = dist.log_prob(sample).sum(dim=(1, 2))
+
         return sample, logLik

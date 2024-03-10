@@ -19,6 +19,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 # from torch.utils.data import DataLoader
 import torch_geometric
+from torch_geometric.utils import remove_isolated_nodes, remove_self_loops
 from torch_geometric.data import Data, InMemoryDataset, Batch
 from torch_geometric.loader import DataLoader
 from torch_geometric.nn import GCNConv, NNConv, global_max_pool
@@ -386,6 +387,27 @@ def assign_edge_type(A, C_x):
     
     return e_c
 
+def clean_gen_graph(gen: NucleiData) -> NucleiData:
+
+    edge_index = gen.edge_index
+    edge_attr = gen.edge_attr
+
+    edge_index, edge_attr = remove_self_loops(edge_index, edge_attr)
+
+    edge_index, edge_attr, mask = (
+        remove_isolated_nodes(edge_index, 
+                              edge_attr)
+    )
+
+    gen_cleaned = NucleiData(
+        x = gen.x[mask], 
+        edge_index = edge_index, 
+        cell_type = gen.cell_type[mask], 
+        edge_attr = edge_attr,
+    )
+
+    return gen_cleaned
+
 def egg_to_ex(generated: dict):
     """
     Implementation of egg_to_ex for the trainer of an EggGeneric model 
@@ -411,15 +433,15 @@ def egg_to_ex(generated: dict):
     X = generated['cont_node_feats']
     
 
-    nuclei_list = [NucleiData(x=X, cell_type=C_x, edge_index=A, edge_attr=E)
-                for (X, C_x, A, E) in zip(
-                    X.unbind(), C_x_hard.unbind(), 
-                    edge_index.unbind(), edge_attr.unbind()
-                )
+    nuclei_list = [
+        clean_gen_graph(
+            NucleiData(x=X, cell_type=C_x, edge_index=A, edge_attr=E)
+        )
+        for (X, C_x, A, E) in zip(
+            X.unbind(), C_x_hard.unbind(), 
+            edge_index.unbind(), edge_attr.unbind()
+        )
     ]
-
-    # TODO: Remove isolated nodes. 
-    # TODO: Remove self loops.
 
     nuclei_batch = Batch.from_data_list(nuclei_list)
 
