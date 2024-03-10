@@ -156,6 +156,13 @@ class EggGeneric(nn.Module):
 
 # %% Trainer
 class EggGenericTrainer(BaseTrainer):
+    """
+    Trainer class for EggGeneric models that implements the 3 part loss 
+    function describe in the paper (cite). 
+
+    This class handles the loss calculation, data loading and formatting, and 
+    the within epoch training logic. 
+    """
     def __init__(self, 
                  model: EggGeneric, 
                  explainee: nn.Module, 
@@ -194,7 +201,10 @@ class EggGenericTrainer(BaseTrainer):
         self.repeat_sampling = repeat_sampling
 
     def egg_to_ex(self, generated: dict) -> Batch: 
-
+        """
+        Default method for formatting the generated egg output to the data 
+        type taken by the explainee model. 
+        """
         if generated['dis_node_feats'] is not None: 
             X = misc.concat_one_hot_to_labels(generated['dis_node_feats'], 
                                               indices=self.model.dis_node_feats) 
@@ -226,15 +236,29 @@ class EggGenericTrainer(BaseTrainer):
         return Batch.from_data_list(data_list)
 
     def ex_to_egg(self, obs_batch) -> List[torch.tensor]: 
+        """
+        Default method to converting the explainee's training data to a format
+        that can be compared with the generated output. 
+        """
         # TODO: Write default function
         return None
 
     def egg_to_egg(self, generated: dict) -> List[torch.tensor]:
+        """
+        Default method for post-processing the generated output for comparison 
+        with the transformed training data. 
+        """
         # TODO: Write default function
         return None
 
-
     def create_data_loader(self):
+        """
+        Default method for creating the dataloader used for within epoch 
+        training. Expected to load graphs for the explainee's format. 
+
+        sub_sampler is expected to be a partial function where the only missing 
+        parameter is a torch geometric data object. 
+        """
         if self.obs_data_loader is None | self.repeat_sampling: 
 
             if self.sub_sampler is None: 
@@ -253,7 +277,7 @@ class EggGenericTrainer(BaseTrainer):
                                                     walk_length=400, 
                                                     sample_coverage=400, 
                                                     log=False, 
-                                                    num_steps=10)
+                                                    num_steps=self.batch_size)
                     )
 
                 sub_samples = [] 
@@ -270,7 +294,7 @@ class EggGenericTrainer(BaseTrainer):
             elif sub_sampler is not None: 
                 for graph in self.obs_data_list:  
 
-                    sub_sampler = self.sub_sampler
+                    sub_sampler = self.sub_sampler(graph)
 
                 sub_samples = [] 
 

@@ -9,6 +9,13 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.profiler import profile, ProfilerActivity
 
 class BaseTrainer:
+    """
+    Generic trainer class for pytorch models. 
+
+    Handles tensorboard, checkpoint saving, and the outside epoch 
+    training logic. Also contains an option for profile the training 
+    performance and bottlenecks.
+    """
     def __init__(self, 
                  model: nn.Module, 
                  optimizer: torch.optim.Optimizer, 
@@ -38,7 +45,7 @@ class BaseTrainer:
         if epoch % self.save_every == 0 or epoch == total_epochs - 1: 
             checkpoint = {
                 'epoch': epoch,
-                'generator_state_dict': self.model.state_dict(),
+                'model_state_dict': self.model.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
             }
             checkpoint_filename = f'{self.checkpoint_path}/checkpoint_epoch_{epoch}.pt'
@@ -49,7 +56,7 @@ class BaseTrainer:
         if resume_path is not None:
             last_checkpoint = torch.load(resume_path)
             self.model.load_state_dict(
-                last_checkpoint['generator_state_dict']
+                last_checkpoint['model_state_dict']
             )
             self.optimizer.load_state_dict(
                 last_checkpoint['optimizer_state_dict']

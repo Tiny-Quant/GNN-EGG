@@ -251,7 +251,7 @@ def nuclei_to_data(G: NucleiData):
 def clear_iso_nodes(example: NucleiData, 
                     num_nodes: Optional[int] = None) -> NucleiData: 
     '''
-    Should not lose grad - checked in debugging.ipynb
+    Should not lose grad - checked in debugging.ipynb. 
     '''
     edge_index, edge_attr, mask = (
         remove_isolated_nodes(example.edge_index, 
