@@ -28,7 +28,8 @@ class EggGeneric(nn.Module):
                  cont_edge_feats: Optional[int] = None, 
                  dis_edge_feats: Optional[Tuple[int]] = None,
                  temp = 1.0, 
-                 batch_size=1): 
+                 batch_size=1, 
+                 allow_self_loops=True): 
 
         super(EggGeneric, self).__init__()
 
@@ -44,6 +45,7 @@ class EggGeneric(nn.Module):
         self.dis_edge_feats = dis_edge_feats
         self.temp = temp
         self.batch_size = batch_size
+        self.allow_self_loops = allow_self_loops
 
         # Layers 
         if self.cont_node_feats is not None:
@@ -78,7 +80,7 @@ class EggGeneric(nn.Module):
 
         self.AdjacencyMatrix = BinaryConcrete(
             self.batch_size, self.max_node_size, self.max_node_size, 
-            self.temp
+            self.temp, self.allow_self_loops
         )
 
         self.device_param = nn.Parameter(torch.empty(0))

@@ -7,6 +7,7 @@ repo_dir = dirname(dirname(abspath(__file__)))
 sys.path.append(repo_dir)
 
 import torch
+from torch_geometric.utils import contains_isolated_nodes, contains_self_loops
 
 from egg_models import egg_generic
 
@@ -67,7 +68,8 @@ def generator_oral_ceograph(device):
         cont_edge_feats=2, 
         dis_node_feats=(4,), 
         # dis_edge_feats=(1, 2), 
-        batch_size=2
+        batch_size=2,
+        allow_self_loops=False
     )
 
     mock_generator.to(device)
@@ -93,7 +95,7 @@ def gen_output_oral_ceograph(generator_oral_ceograph, device):
     """
     Output test case oral ceograph an EggGeneric generator model. 
     """
-    generator_oral_ceograph.to(device)
+    #generator_oral_ceograph.to(device)
     return generator_oral_ceograph()
 
 @pytest.fixture
@@ -150,6 +152,17 @@ def compare_grads(loss_1, loss_2, model, retain=False):
 
     for grad1, grad2 in zip(grad_1, grad_2):
         assert torch.allclose(grad1, grad2)
+
+def check_graph_grad_fns(graph: dict):
+    """
+    check if all the tensors in a dict have grad_fns.
+    """
+    for key, value in graph:
+        if isinstance(value, torch.Tensor):
+            assert(
+                hasattr(value, 'grad_fn'), 
+                f"Tensor {key} does not have grad_fn attribute."
+            )
 
 # %% Tests
 def test_gen_shapes(generator, gen_output):
@@ -214,8 +227,14 @@ def test_oral_ceograph_egg_to_ex(gen_output_oral_ceograph,
 
     assert egg_formatted_to_ex is not None
 
+    assert contains_self_loops(egg_formatted_to_ex.edge_index) == False
+
+    assert contains_isolated_nodes(egg_formatted_to_ex.edge_index) == False
+
+    check_graph_grad_fns(egg_formatted_to_ex)
 
     assert isinstance(explainee_oral_ceograph(egg_formatted_to_ex), 
                                               torch.Tensor)
     
     assert explainee_oral_ceograph(egg_formatted_to_ex).shape == (2, 2)
+ 
