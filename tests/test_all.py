@@ -294,6 +294,10 @@ def test_oral_ceograph_egg_to_ex(gen_output_oral_ceograph,
 ])
 def test_create_dataloader_oral_ceograph(EggGenericTrainer_oral_ceograph, 
                                          sub_sampler): 
+    """
+    Tests is a dataloader is returned, that iterating return a batch, and 
+    the forward pass through the explainee produces at least 1 gradient. 
+    """
     EggGenericTrainer_oral_ceograph.sub_sampler = sub_sampler
 
     if sub_sampler == "else": 
