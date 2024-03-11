@@ -244,7 +244,7 @@ def check_at_least_1_grad(loss: torch.tensor, model: torch.nn.Module,
             print(f'{name} has gradient.')
             num_grads += 1
     
-    assert num_grads > 1, "There are no gradients."
+    assert num_grads > 0, "There are no gradients."
 
 def compare_grads(loss_1, loss_2, model, retain=False): 
     """
@@ -558,3 +558,32 @@ def test_PredLossBatched_oral_ceograph(target_oral_ceograph,
     assert loss.shape == (2,) 
 
     check_at_least_1_grad(loss, generator_oral_ceograph)
+
+def test_Edge_Penalty(generator, generator2, generator_oral_ceograph): 
+    """
+    Test that the EdgePenalty function returns and scalar and can produce a 
+    gradient. 
+    """
+    loss_fn_1 = egg_generic_losses.EdgePenalty()
+    loss_fn_2 = egg_generic_losses.EdgePenalty(edge_budget=10)
+
+    loss_1 = loss_fn_1(generator.AdjacencyMatrix.probs)
+    loss_2 = loss_fn_1(generator2.AdjacencyMatrix.probs)
+    loss_3 = loss_fn_2(generator_oral_ceograph.AdjacencyMatrix.probs)
+    loss_4 = loss_fn_2(generator.AdjacencyMatrix.probs)
+    loss_5 = loss_fn_2(generator2.AdjacencyMatrix.probs)
+    loss_6 = loss_fn_2(generator_oral_ceograph.AdjacencyMatrix.probs)
+
+    assert loss_1.shape == torch.Size([])
+    assert loss_2.shape == torch.Size([])
+    assert loss_3.shape == torch.Size([])
+    assert loss_4.shape == torch.Size([])
+    assert loss_5.shape == torch.Size([])
+    assert loss_6.shape == torch.Size([])
+
+    check_at_least_1_grad(loss_1, generator)
+    check_at_least_1_grad(loss_2, generator2)
+    check_at_least_1_grad(loss_3, generator_oral_ceograph)
+    check_at_least_1_grad(loss_4, generator)
+    check_at_least_1_grad(loss_5, generator2)
+    check_at_least_1_grad(loss_6, generator_oral_ceograph)

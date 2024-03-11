@@ -105,6 +105,25 @@ class PredLossBatched(nn.Module):
             return loss, None
 
 # %%
+class EdgePenalty(nn.Module):
+    """
+    Implements the edge penalty of sparsity loss term in (cite). 
+    """
+    def __init__(self, edge_budget = 0):
+        super(EdgePenalty, self).__init__()
+
+        self.edge_budget = edge_budget
+        
+    def forward(self, edge_probs: torch.Tensor) -> torch.Tensor:
+        #flat_edge_probs = edge_probs.flatten(start_dim=1) # All after batch.
+        L2_pen = torch.norm(edge_probs, p=2)
+        budget_pen = (
+            (F.softplus(edge_probs.sum() - self.edge_budget)) ** 2
+        ) 
+
+        return L2_pen + budget_pen
+
+# %%
 class GEDasMatchLoss(nn.Module):
     # TODO: Consider the case where indices are None. 
     def __init__(self, node_size, 
