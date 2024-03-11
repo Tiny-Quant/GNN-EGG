@@ -432,7 +432,6 @@ def egg_to_ex(generated: dict):
 
     X = generated['cont_node_feats']
     
-
     nuclei_list = [
         clean_gen_graph(
             NucleiData(x=X, cell_type=C_x, edge_index=A, edge_attr=E)

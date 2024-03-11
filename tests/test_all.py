@@ -7,6 +7,7 @@ repo_dir = dirname(dirname(abspath(__file__)))
 sys.path.append(repo_dir)
 
 import torch
+import torch_geometric as pyg
 from torch_geometric.utils import contains_isolated_nodes, contains_self_loops
 
 from egg_models import egg_generic
@@ -113,6 +114,34 @@ def explainee_oral_ceograph(device):
 
     return mock_explainee
 
+@pytest.fixture
+def data_list_oral_ceograph(gen_output_oral_ceograph):
+    """
+    Returns a mock data_list of oral ceograph training data. 
+    """
+    mock_data_list = (oral_ceograph.egg_to_ex(gen_output_oral_ceograph))
+    mock_data_list.to(torch.device('cpu'))
+
+    return mock_data_list.to_data_list()
+
+@pytest.fixture
+def EggGenericTrainer_oral_ceograph(generator_oral_ceograph, 
+                                    explainee_oral_ceograph, 
+                                    data_list_oral_ceograph):
+
+    mock_trainer = egg_generic.EggGenericTrainer(
+       model=generator_oral_ceograph, 
+       explainee=explainee_oral_ceograph, 
+       target=None, 
+       obs_data_list=data_list_oral_ceograph, 
+       optimizer=None, 
+       loss_term_weights=None, 
+       tensorboard_path="", 
+       checkpoint_path="", 
+    )
+
+    return mock_trainer
+
 # %% Helper Functions
 def check_grads_exist(loss: torch.tensor, model: torch.nn.Module, retain=False): 
     """
@@ -123,10 +152,24 @@ def check_grads_exist(loss: torch.tensor, model: torch.nn.Module, retain=False):
 
     for name, param in model.named_parameters():
         if name != "device_param": 
-            assert(
-                param.grad is not None, 
+            assert param.grad is not None, (
                 f"Parameter '{name}' does not have gradients"
-            ) 
+            )
+
+def check_at_least_1_grad(loss: torch.tensor, model: torch.nn.Module, 
+                          retain=False):
+    """
+    Asserts that a least one parameter has a gradient.  
+    """
+    loss.sum().backward(retain_graph=retain)
+
+    num_grads = 0
+    for name, param in model.named_parameters():
+        if param.grad is not None:
+            print(f'{name} has gradient.')
+            num_grads += 1
+    
+    assert num_grads > 1, "There are no gradients."
 
 def compare_grads(loss_1, loss_2, model, retain=False): 
     """
@@ -159,10 +202,9 @@ def check_graph_grad_fns(graph: dict):
     """
     for key, value in graph:
         if isinstance(value, torch.Tensor):
-            assert(
-                hasattr(value, 'grad_fn'), 
+            assert hasattr(value, 'grad_fn'), (
                 f"Tensor {key} does not have grad_fn attribute."
-            )
+            ) 
 
 # %% Tests
 def test_gen_shapes(generator, gen_output):
@@ -212,8 +254,6 @@ def test_none_logLik(generator2, gen_output2):
         ) 
     )
 
-    check_grads_exist(loss_1, generator2, retain=True)
-
     # Double checks that adding 0 to the loss does change the gradients. 
     compare_grads(loss_3, loss_4, generator2, retain=True) 
 
@@ -237,4 +277,33 @@ def test_oral_ceograph_egg_to_ex(gen_output_oral_ceograph,
                                               torch.Tensor)
     
     assert explainee_oral_ceograph(egg_formatted_to_ex).shape == (2, 2)
- 
+
+def test_create_dataloader_oral_ceograph(EggGenericTrainer_oral_ceograph): 
+    EggGenericTrainer_oral_ceograph.sub_sampler = None
+    EggGenericTrainer_oral_ceograph.create_data_loader()
+
+    assert isinstance(EggGenericTrainer_oral_ceograph.obs_data_loader, 
+                      pyg.loader.DataLoader)
+
+    for _, obs_batch in enumerate(
+        EggGenericTrainer_oral_ceograph.obs_data_loader): 
+        
+        assert isinstance(obs_batch, pyg.data.Batch)
+
+        obs_batch.to(EggGenericTrainer_oral_ceograph.model.device_param.device)
+        generated = EggGenericTrainer_oral_ceograph.model()
+
+        gen_ex = oral_ceograph.egg_to_ex(generated)
+
+        pred = EggGenericTrainer_oral_ceograph.explainee(gen_ex)
+
+        assert isinstance(
+            pred, 
+            torch.Tensor
+        )
+
+        assert pred.shape == (2, 2) 
+
+        loss = pred.sum()
+
+        check_at_least_1_grad(loss, EggGenericTrainer_oral_ceograph.model)

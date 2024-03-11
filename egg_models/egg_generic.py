@@ -4,8 +4,8 @@ from tqdm import tqdm
 
 import torch
 import torch.nn as nn 
-from torch.utils.data import DataLoader
-from torch_geometric.loader import GraphSAINTRandomWalkSampler
+#from torch.utils.data import DataLoader
+from torch_geometric.loader import DataLoader, GraphSAINTRandomWalkSampler
 from torch_geometric.data import Data, Batch
 
 
@@ -261,7 +261,7 @@ class EggGenericTrainer(BaseTrainer):
         sub_sampler is expected to be a partial function where the only missing 
         parameter is a torch geometric data object. 
         """
-        if self.obs_data_loader is None | self.repeat_sampling: 
+        if not hasattr(self, 'obs_data_loader') | self.repeat_sampling: 
 
             if self.sub_sampler is None: 
                 self.obs_data_loader = (
@@ -271,6 +271,7 @@ class EggGenericTrainer(BaseTrainer):
                 )
 
             elif self.sub_sampler == "default":
+                sub_samples = [] 
                 for graph in self.obs_data_list:  
 
                     sub_sampler = (
@@ -282,10 +283,9 @@ class EggGenericTrainer(BaseTrainer):
                                                     num_steps=self.batch_size)
                     )
 
-                sub_samples = [] 
 
-                for batch in sub_sampler: 
-                    sub_samples.append(batch)
+                    for batch in sub_sampler: 
+                        sub_samples.append(batch)
 
                 self.obs_data_loader = (
                     DataLoader(sub_samples, 
@@ -294,14 +294,13 @@ class EggGenericTrainer(BaseTrainer):
                 )
 
             elif sub_sampler is not None: 
+                sub_samples = [] 
                 for graph in self.obs_data_list:  
 
                     sub_sampler = self.sub_sampler(graph)
 
-                sub_samples = [] 
-
-                for batch in sub_sampler: 
-                    sub_samples.append(batch)
+                    for batch in sub_sampler: 
+                        sub_samples.append(batch)
 
                 self.obs_data_loader = (
                     DataLoader(sub_samples, 
@@ -310,7 +309,7 @@ class EggGenericTrainer(BaseTrainer):
                 )
 
         else: 
-            return None
+            raise ValueError(f'{self.sub_sampler} is an invalid sub-sampler.')
 
     def compute_loss_terms(self, 
                            generated: dict, 
