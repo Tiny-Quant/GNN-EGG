@@ -43,6 +43,7 @@ def activation_hook(model: nn.Module,
 
 def dict_cos_dist(dict1: Dict[str, torch.Tensor], 
                   dict2: Dict[str, torch.Tensor], 
+                  batch_indices: torch.Tensor, 
                   act_pool_func: Callable=pyg.nn.global_mean_pool, 
                   agg_func: Callable=torch.sum):
     """
@@ -50,16 +51,16 @@ def dict_cos_dist(dict1: Dict[str, torch.Tensor],
     on matching keys. Tensors contribute -2 if opposite, -1 is orthogonal, and 
     0 is same. 
     """
-    agg_cos_dist = torch.tensor([0.0])
+    agg_cos_dist = []
     for key in set(dict1.keys()) & set(dict2.keys()): 
-        tensor1 = act_pool_func(dict1[key])
-        tensor2 = act_pool_func(dict2[key])
+        tensor1 = act_pool_func(dict1[key], batch=batch_indices)
+        tensor2 = dict2[key].expand_as(tensor1).to(tensor1.device)
 
         cos_sim = F.cosine_similarity(tensor1, tensor2, dim=1)
 
-        agg_cos_dist = agg_func(agg_cos_dist, cos_sim - 1)
+        agg_cos_dist.append(cos_sim - 1) # [B]
     
-    return agg_cos_dist
+    return agg_func(torch.stack(agg_cos_dist), dim=-1)
 
 # %%
 class PredLossBatched(nn.Module):
@@ -86,9 +87,12 @@ class PredLossBatched(nn.Module):
             explainee_pred = self.explainee(batch)
 
             loss = self.criterion(explainee_pred, 
-                                self.target.expand_as(explainee_pred))
+                                  (self.target.expand_as(explainee_pred).
+                                    to(explainee_pred.device))
+            )
             
-            loss = loss + dict_cos_dist(self.avg_embed_targets, activations)
+            loss = loss + dict_cos_dist(activations, self.avg_embed_targets, 
+                                        batch_indices=batch.batch)
 
             remove_hooks()
 

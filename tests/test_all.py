@@ -2,6 +2,7 @@
 import pytest
 
 from functools import partial
+from typing import Dict
 
 import sys
 from os.path import dirname, abspath
@@ -15,8 +16,16 @@ import torch_geometric as pyg
 from torch_geometric.utils import contains_isolated_nodes, contains_self_loops
 
 from egg_models import egg_generic
+from egg_models import egg_generic_losses
 
 from utils import oral_ceograph
+
+# fix random seeds for reproducibility
+SEED = 123
+torch.manual_seed(SEED)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = True 
+#np.random.seed(SEED)
 
 # %% Fixture/Mocks/Data Test Cases
 @pytest.fixture
@@ -96,11 +105,10 @@ def gen_output2(generator2):
     return generator2()
 
 @pytest.fixture
-def gen_output_oral_ceograph(generator_oral_ceograph, device):
+def gen_output_oral_ceograph(generator_oral_ceograph):
     """
     Output test case oral ceograph an EggGeneric generator model. 
     """
-    #generator_oral_ceograph.to(device)
     return generator_oral_ceograph()
 
 @pytest.fixture
@@ -191,6 +199,24 @@ def EggGenericTrainer_oral_ceograph(generator_oral_ceograph,
 
     return mock_trainer
 
+@pytest.fixture
+def target2():
+    return torch.tensor([1.0, 0.0, 0.0])
+
+@pytest.fixture
+def target_oral_ceograph():
+    target = torch.tensor([1.0, 0.0])
+    return target
+
+@pytest.fixture
+def avg_embed_targets_oral_ceograph(device):
+    mock_embeds = {
+       'conv2': torch.randn((1, 20)), 
+       'conv3': torch.randn((1, 20))
+    }
+
+    return mock_embeds
+
 # %% Helper Functions
 def check_grads_exist(loss: torch.tensor, model: torch.nn.Module, retain=False): 
     """
@@ -262,7 +288,6 @@ class GCN(torch.nn.Module):
     """
     def __init__(self, hidden_channels):
         super(GCN, self).__init__()
-        torch.manual_seed(12345)
         self.conv1 = pyg.nn.GCNConv(13, hidden_channels)
         self.conv2 = pyg.nn.GCNConv(hidden_channels, hidden_channels)
         self.conv3 = pyg.nn.GCNConv(hidden_channels, hidden_channels)
@@ -476,3 +501,27 @@ def test_create_dataloader_oral_ceograph(EggGenericTrainer_oral_ceograph,
             loss = pred.sum()
 
             check_at_least_1_grad(loss, EggGenericTrainer_oral_ceograph.model)
+
+def test_dict_cos_dist():
+    pass 
+
+
+def test_PredLossBatched_oral_ceograph(target_oral_ceograph, 
+                                       explainee_oral_ceograph, 
+                                       avg_embed_targets_oral_ceograph, 
+                                       generator_oral_ceograph, 
+                                       gen_output_oral_ceograph):
+    """
+    Test the output shape and gradients for the oral ceograph test case. 
+    """
+    loss_func = egg_generic_losses.PredLossBatched(
+        target=target_oral_ceograph, explainee=explainee_oral_ceograph, 
+        avg_embed_targets=avg_embed_targets_oral_ceograph
+    )
+    egg_formatted_to_ex = oral_ceograph.egg_to_ex(gen_output_oral_ceograph)
+
+    loss, activations = loss_func(egg_formatted_to_ex)
+
+    assert loss.shape == (2,) 
+
+    check_at_least_1_grad(loss, generator_oral_ceograph)
