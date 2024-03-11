@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from functools import partial 
+from typing import Dict, List, Tuple, Callable, Optional
 
 import pygmtools as pygm
 pygm.set_backend('pytorch')
@@ -10,27 +11,54 @@ from pygmtools.utils import build_aff_mat
 
 from utils import misc
 
+# %% Helper Functions
+def activation_hook(model: nn.Module,
+                    layer_names: List[str]) -> Tuple[Dict[str, torch.Tensor], 
+                                                     Callable]:
+    """
+    Establishes forward hooks to extract a names activations from a model. 
+    Returns a dictionary of activations and a function to remove the hooks.
+    """
+    activations = {}
+
+    def hook(module, input, output, name):
+        activations[name] = output.detach()
+
+    hooks = []
+    for name, module in model.named_modules():
+        if name in layer_names:
+            hook_fn = (
+                lambda module, input, output, name=name: 
+                    hook(module, input, output, name)
+            )
+            hooks.append(module.register_forward_hook(hook_fn))
+
+    def remove_hooks():
+        for hook in hooks:
+            hook.remove()
+
+    return activations, remove_hooks
+
 # %%
-
 class PredLossBatched(nn.Module):
-    def __init__(self, target: torch.Tensor, 
+    def __init__(self, 
+                 target: torch.Tensor, 
                  explainee: nn.Module,
-                 criterion = nn.BCELoss(reduction='none')):
-
+                 criterion = nn.CrossEntropyLoss(reduction='none')):
         super(PredLossBatched, self).__init__()
+
         self.target = target
         self.explainee = explainee
         self.criterion = criterion
     
     def forward(self, batch):
-        explainee_pred = torch.softmax(self.explainee(batch), dim=1)
+        explainee_pred = self.explainee(batch)
         loss = self.criterion(explainee_pred, 
                               self.target.expand_as(explainee_pred))
 
         return loss
 
 # %%
-
 class GEDasMatchLoss(nn.Module):
     # TODO: Consider the case where indices are None. 
     def __init__(self, node_size, 
