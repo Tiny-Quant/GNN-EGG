@@ -386,6 +386,57 @@ def test_oral_ceograph_egg_to_ex(gen_output_oral_ceograph,
     )), 
     ("else")
 ])
+def test_create_dataloader2(EggGenericTrainer2, sub_sampler): 
+    """
+    Tests is a dataloader is returned, that iterating return a batch, and 
+    the forward pass through the explainee produces at least 1 gradient. 
+    """
+    EggGenericTrainer2.sub_sampler = sub_sampler
+
+    if sub_sampler == "else": 
+        with pytest.raises(ValueError):
+            EggGenericTrainer2.create_data_loader()
+
+    else: 
+        EggGenericTrainer2.create_data_loader()
+        assert isinstance(EggGenericTrainer2.obs_data_loader, 
+                        pyg.loader.DataLoader)
+
+        for _, obs_batch in enumerate(
+            EggGenericTrainer2.obs_data_loader): 
+            
+            assert isinstance(obs_batch, pyg.data.Batch)
+
+            obs_batch.to(EggGenericTrainer2.model.device_param.device)
+            generated = EggGenericTrainer2.model()
+
+            gen_ex = EggGenericTrainer2.egg_to_ex(generated)
+
+            pred = EggGenericTrainer2.explainee(gen_ex)
+
+            assert isinstance(
+                pred, 
+                torch.Tensor
+            )
+
+            assert pred.shape == (2, 3) 
+
+            loss = pred.sum()
+
+            check_at_least_1_grad(loss, EggGenericTrainer2.model)
+
+@pytest.mark.parametrize("sub_sampler", [
+    (None), 
+    ("default"), 
+    (partial(pyg.loader.GraphSAINTRandomWalkSampler, 
+        batch_size=1, 
+        walk_length=10, 
+        num_steps=2, 
+        sample_coverage=1, 
+        log=False
+    )), 
+    ("else")
+])
 def test_create_dataloader_oral_ceograph(EggGenericTrainer_oral_ceograph, 
                                          sub_sampler): 
     """
