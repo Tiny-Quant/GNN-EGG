@@ -1,6 +1,8 @@
 # %% Dependencies
 import pytest
 
+from functools import partial
+
 import sys
 from os.path import dirname, abspath
 repo_dir = dirname(dirname(abspath(__file__)))
@@ -278,32 +280,50 @@ def test_oral_ceograph_egg_to_ex(gen_output_oral_ceograph,
     
     assert explainee_oral_ceograph(egg_formatted_to_ex).shape == (2, 2)
 
-def test_create_dataloader_oral_ceograph(EggGenericTrainer_oral_ceograph): 
-    EggGenericTrainer_oral_ceograph.sub_sampler = None
-    EggGenericTrainer_oral_ceograph.create_data_loader()
+@pytest.mark.parametrize("sub_sampler", [
+    (None), 
+    ("default"), 
+    (partial(pyg.loader.GraphSAINTRandomWalkSampler, 
+        batch_size=1, 
+        walk_length=10, 
+        num_steps=2, 
+        sample_coverage=1, 
+        log=False
+    )), 
+    ("else")
+])
+def test_create_dataloader_oral_ceograph(EggGenericTrainer_oral_ceograph, 
+                                         sub_sampler): 
+    EggGenericTrainer_oral_ceograph.sub_sampler = sub_sampler
 
-    assert isinstance(EggGenericTrainer_oral_ceograph.obs_data_loader, 
-                      pyg.loader.DataLoader)
+    if sub_sampler == "else": 
+        with pytest.raises(ValueError):
+            EggGenericTrainer_oral_ceograph.create_data_loader()
 
-    for _, obs_batch in enumerate(
-        EggGenericTrainer_oral_ceograph.obs_data_loader): 
-        
-        assert isinstance(obs_batch, pyg.data.Batch)
+    else: 
+        EggGenericTrainer_oral_ceograph.create_data_loader()
+        assert isinstance(EggGenericTrainer_oral_ceograph.obs_data_loader, 
+                        pyg.loader.DataLoader)
 
-        obs_batch.to(EggGenericTrainer_oral_ceograph.model.device_param.device)
-        generated = EggGenericTrainer_oral_ceograph.model()
+        for _, obs_batch in enumerate(
+            EggGenericTrainer_oral_ceograph.obs_data_loader): 
+            
+            assert isinstance(obs_batch, pyg.data.Batch)
 
-        gen_ex = oral_ceograph.egg_to_ex(generated)
+            obs_batch.to(EggGenericTrainer_oral_ceograph.model.device_param.device)
+            generated = EggGenericTrainer_oral_ceograph.model()
 
-        pred = EggGenericTrainer_oral_ceograph.explainee(gen_ex)
+            gen_ex = oral_ceograph.egg_to_ex(generated)
 
-        assert isinstance(
-            pred, 
-            torch.Tensor
-        )
+            pred = EggGenericTrainer_oral_ceograph.explainee(gen_ex)
 
-        assert pred.shape == (2, 2) 
+            assert isinstance(
+                pred, 
+                torch.Tensor
+            )
 
-        loss = pred.sum()
+            assert pred.shape == (2, 2) 
 
-        check_at_least_1_grad(loss, EggGenericTrainer_oral_ceograph.model)
+            loss = pred.sum()
+
+            check_at_least_1_grad(loss, EggGenericTrainer_oral_ceograph.model)

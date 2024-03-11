@@ -293,11 +293,11 @@ class EggGenericTrainer(BaseTrainer):
                                shuffle=True, drop_last=True)
                 )
 
-            elif sub_sampler is not None: 
+            elif callable(self.sub_sampler): 
                 sub_samples = [] 
                 for graph in self.obs_data_list:  
 
-                    sub_sampler = self.sub_sampler(graph)
+                    sub_sampler = self.sub_sampler(data=graph)
 
                     for batch in sub_sampler: 
                         sub_samples.append(batch)
@@ -308,8 +308,11 @@ class EggGenericTrainer(BaseTrainer):
                                shuffle=True, drop_last=True)
                 )
 
+            else: 
+                raise ValueError(f'{self.sub_sampler} is an invalid sub-sampler.')
+        
         else: 
-            raise ValueError(f'{self.sub_sampler} is an invalid sub-sampler.')
+            return self.obs_data_loader
 
     def compute_loss_terms(self, 
                            generated: dict, 
