@@ -1,9 +1,11 @@
+from functools import partial 
+from typing import Dict, List, Tuple, Callable, Optional
+
 import torch 
 import torch.nn as nn 
 import torch.nn.functional as F
 
-from functools import partial 
-from typing import Dict, List, Tuple, Callable, Optional
+import torch_geometric as pyg
 
 import pygmtools as pygm
 pygm.set_backend('pytorch')
@@ -39,24 +41,64 @@ def activation_hook(model: nn.Module,
 
     return activations, remove_hooks
 
+def dict_cos_dist(dict1: Dict[str, torch.Tensor], 
+                  dict2: Dict[str, torch.Tensor], 
+                  act_pool_func: Callable=pyg.nn.global_mean_pool, 
+                  agg_func: Callable=torch.sum):
+    """
+    Returns the aggregated cosine distance between two dictionaries of tensors 
+    on matching keys. Tensors contribute -2 if opposite, -1 is orthogonal, and 
+    0 is same. 
+    """
+    agg_cos_dist = torch.tensor([0.0])
+    for key in set(dict1.keys()) & set(dict2.keys()): 
+        tensor1 = act_pool_func(dict1[key])
+        tensor2 = act_pool_func(dict2[key])
+
+        cos_sim = F.cosine_similarity(tensor1, tensor2, dim=1)
+
+        agg_cos_dist = agg_func(agg_cos_dist, cos_sim - 1)
+    
+    return agg_cos_dist
+
 # %%
 class PredLossBatched(nn.Module):
+    """
+    Implements the prediction loss term explaining the paper (cite). 
+    """
     def __init__(self, 
                  target: torch.Tensor, 
                  explainee: nn.Module,
-                 criterion = nn.CrossEntropyLoss(reduction='none')):
+                 criterion = nn.CrossEntropyLoss(reduction='none'), 
+                 avg_embed_targets: Dict[str, torch.Tensor]=None):
         super(PredLossBatched, self).__init__()
 
         self.target = target
         self.explainee = explainee
         self.criterion = criterion
+        self.avg_embed_targets = avg_embed_targets
     
     def forward(self, batch):
-        explainee_pred = self.explainee(batch)
-        loss = self.criterion(explainee_pred, 
-                              self.target.expand_as(explainee_pred))
+        if self.avg_embed_targets is not None: 
+            activations, remove_hooks = (
+                activation_hook(self.explainee, self.avg_embed_targets.keys())
+            ) 
+            explainee_pred = self.explainee(batch)
 
-        return loss
+            loss = self.criterion(explainee_pred, 
+                                self.target.expand_as(explainee_pred))
+            
+            loss = loss + dict_cos_dist(self.avg_embed_targets, activations)
+
+            remove_hooks()
+
+            return loss, activations
+
+        else: 
+            explainee_pred = self.explainee(batch)
+            loss = self.criterion(explainee_pred, 
+                                self.target.expand_as(explainee_pred))
+            return loss, None
 
 # %%
 class GEDasMatchLoss(nn.Module):
