@@ -502,9 +502,42 @@ def test_create_dataloader_oral_ceograph(EggGenericTrainer_oral_ceograph,
 
             check_at_least_1_grad(loss, EggGenericTrainer_oral_ceograph.model)
 
-def test_dict_cos_dist():
-    pass 
 
+@pytest.mark.parametrize(
+    "dict1, dict2, act_pool_func, agg_func, expected", 
+    [
+        ({"layer_1": torch.ones((2, 10)), "layer_2": torch.zeros((2, 25))}, 
+         {"layer_1": -1 * torch.ones((2, 10)), "layer_2": torch.ones((2, 25))}, 
+         lambda x, batch: x, torch.mean, torch.tensor([1.5, 1.5])), 
+        ({"layer_1": torch.ones((2, 10)), "layer_2": torch.zeros((2, 25))}, 
+         {"layer_1": -1 * torch.ones((2, 10)), "layer_2": torch.ones((2, 25))}, 
+         lambda x, batch: x, torch.sum, torch.tensor([3., 3.])), 
+        ({"layer_1": torch.ones((2, 10)), "layer_2": torch.zeros((2, 25))}, 
+         {"layer_1": -1 * torch.ones((1, 10)), "layer_2": torch.ones((1, 25))}, 
+         lambda x, batch: x, torch.mean, torch.tensor([1.5, 1.5])), 
+        ({"layer_1": torch.ones((2, 10)), "layer_2": torch.zeros((2, 25))}, 
+         {"layer_1": -1 * torch.ones((1, 10)), "layer_2": torch.ones((1, 25))}, 
+         lambda x, batch: x, torch.sum, torch.tensor([3., 3.])), 
+        ({"layer_1": torch.cat([torch.ones((1, 10)), torch.zeros((1, 10))]), 
+          "layer_2": torch.cat([-1 * torch.ones((1, 25)), torch.ones((1, 25))])}, 
+         {"layer_1": -1 * torch.ones((1, 10)), "layer_2": torch.ones((1, 25))}, 
+         lambda x, batch: x, torch.sum, torch.tensor([4., 1.])), 
+        ({"layer_1": torch.cat([torch.ones((1, 10)), torch.zeros((1, 10))]), 
+          "layer_2": torch.cat([-1 * torch.ones((1, 25)), torch.ones((1, 25))])}, 
+         {"layer_1": -1 * torch.ones((1, 10)), "layer_2": torch.ones((1, 25))}, 
+         lambda x, batch: x, torch.mean, torch.tensor([2., 0.5]))
+    ]
+)
+def test_dict_cos_dist(dict1, dict2, act_pool_func, agg_func, expected):
+    """
+    General test cases for embedding cosine distance. 
+    """
+    loss = egg_generic_losses.dict_cos_dist(dict1, dict2, 
+                                            batch_indices=None, 
+                                            act_pool_func=act_pool_func, 
+                                            agg_func=agg_func) 
+
+    assert torch.equal(loss, expected)
 
 def test_PredLossBatched_oral_ceograph(target_oral_ceograph, 
                                        explainee_oral_ceograph, 

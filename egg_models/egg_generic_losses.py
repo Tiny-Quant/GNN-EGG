@@ -47,9 +47,9 @@ def dict_cos_dist(dict1: Dict[str, torch.Tensor],
                   act_pool_func: Callable=pyg.nn.global_mean_pool, 
                   agg_func: Callable=torch.sum):
     """
-    Returns the aggregated cosine distance between two dictionaries of tensors 
-    on matching keys. Tensors contribute -2 if opposite, -1 is orthogonal, and 
-    0 is same. 
+    Returns the aggregated cosine distance by batch between two dictionaries 
+    of tensors on matching keys. 
+    Tensors contribute 2 if opposite, 1 is orthogonal, and 0 is same. 
     """
     agg_cos_dist = []
     for key in set(dict1.keys()) & set(dict2.keys()): 
@@ -58,9 +58,9 @@ def dict_cos_dist(dict1: Dict[str, torch.Tensor],
 
         cos_sim = F.cosine_similarity(tensor1, tensor2, dim=1)
 
-        agg_cos_dist.append(cos_sim - 1) # [B]
+        agg_cos_dist.append(1 - cos_sim) # [B]
     
-    return agg_func(torch.stack(agg_cos_dist), dim=-1)
+    return agg_func(torch.stack(agg_cos_dist), dim=0)
 
 # %%
 class PredLossBatched(nn.Module):
