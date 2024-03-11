@@ -9,6 +9,8 @@ repo_dir = dirname(dirname(abspath(__file__)))
 sys.path.append(repo_dir)
 
 import torch
+import torch.nn as nn 
+import torch.nn.functional as F
 import torch_geometric as pyg
 from torch_geometric.utils import contains_isolated_nodes, contains_self_loops
 
@@ -102,6 +104,16 @@ def gen_output_oral_ceograph(generator_oral_ceograph, device):
     return generator_oral_ceograph()
 
 @pytest.fixture
+def explainee2(): 
+    """
+    Returns a basic GCN model that works with generator2. 
+    """
+    mock_explainee = GCN(hidden_channels=64)
+    mock_explainee.eval()
+
+    return mock_explainee
+
+@pytest.fixture
 def explainee_oral_ceograph(device):
     """
     Returns a mock explainee for an oral ceograph model. 
@@ -117,14 +129,49 @@ def explainee_oral_ceograph(device):
     return mock_explainee
 
 @pytest.fixture
+def data_list2(generator2, explainee2, gen_output2):
+    """
+    Returns a mock data_list for generator2. 
+    """
+    dummy_trainer = egg_generic.EggGenericTrainer(
+        model=generator2, 
+        explainee=explainee2, 
+        target=None, 
+        obs_data_list=None, 
+        optimizer=None, 
+        loss_term_weights=None, 
+        tensorboard_path=None, 
+        checkpoint_path=None,
+    )
+    mock_data_list = dummy_trainer.egg_to_ex(gen_output2) 
+    #mock_data_list.to(torch.device('cpu'))
+
+    return mock_data_list.to_data_list()
+
+@pytest.fixture
 def data_list_oral_ceograph(gen_output_oral_ceograph):
     """
     Returns a mock data_list of oral ceograph training data. 
     """
-    mock_data_list = (oral_ceograph.egg_to_ex(gen_output_oral_ceograph))
+    mock_data_list = oral_ceograph.egg_to_ex(gen_output_oral_ceograph)
     mock_data_list.to(torch.device('cpu'))
 
     return mock_data_list.to_data_list()
+
+@pytest.fixture
+def EggGenericTrainer2(generator2, explainee2, data_list2):
+    mock_trainer = egg_generic.EggGenericTrainer(
+        model=generator2, 
+        explainee=explainee2, 
+        target=None, 
+        obs_data_list=data_list2, 
+        optimizer=None, 
+        loss_term_weights=None, 
+        tensorboard_path=None, 
+        checkpoint_path=None,
+    )
+
+    return mock_trainer
 
 @pytest.fixture
 def EggGenericTrainer_oral_ceograph(generator_oral_ceograph, 
@@ -138,8 +185,8 @@ def EggGenericTrainer_oral_ceograph(generator_oral_ceograph,
        obs_data_list=data_list_oral_ceograph, 
        optimizer=None, 
        loss_term_weights=None, 
-       tensorboard_path="", 
-       checkpoint_path="", 
+       tensorboard_path=None, 
+       checkpoint_path=None, 
     )
 
     return mock_trainer
@@ -207,6 +254,38 @@ def check_graph_grad_fns(graph: dict):
             assert hasattr(value, 'grad_fn'), (
                 f"Tensor {key} does not have grad_fn attribute."
             ) 
+# %% Mock Standard Explainee GCN Model 
+# Reference: https://colab.research.google.com/drive/1I8a0DfQ3fI7Njc62__mVXUlcAleUclnb?usp=sharing#scrollTo=CN3sRVuaQ88l
+class GCN(torch.nn.Module):
+    """
+    Stock standard GCN model.  
+    """
+    def __init__(self, hidden_channels):
+        super(GCN, self).__init__()
+        torch.manual_seed(12345)
+        self.conv1 = pyg.nn.GCNConv(13, hidden_channels)
+        self.conv2 = pyg.nn.GCNConv(hidden_channels, hidden_channels)
+        self.conv3 = pyg.nn.GCNConv(hidden_channels, hidden_channels)
+        self.lin = nn.Linear(hidden_channels, 3)
+
+    def forward(self, data):
+        x, edge_index, batch = data.x, data.edge_index, data.batch
+        # 1. Obtain node embeddings 
+        x = self.conv1(x, edge_index)
+        x = x.relu()
+        x = self.conv2(x, edge_index)
+        x = x.relu()
+        x = self.conv3(x, edge_index)
+
+        # 2. Readout layer
+        x = pyg.nn.global_mean_pool(x, batch)  # [batch_size, hidden_channels]
+
+        # 3. Apply a final classifier
+        x = F.dropout(x, p=0.5, training=self.training)
+        x = self.lin(x)
+        x = F.softmax(x, dim=-1)
+        
+        return x
 
 # %% Tests
 def test_gen_shapes(generator, gen_output):
@@ -258,6 +337,21 @@ def test_none_logLik(generator2, gen_output2):
 
     # Double checks that adding 0 to the loss does change the gradients. 
     compare_grads(loss_3, loss_4, generator2, retain=True) 
+
+def test_default_egg_to_ex(gen_output2, explainee2, EggGenericTrainer2): 
+    """
+    Tests that the egg_to_ex function returns a tensor and that the forward 
+    pass through the explainee returns the expected shape.
+    """
+    egg_formatted_to_ex = EggGenericTrainer2.egg_to_ex(gen_output2)
+
+    assert egg_formatted_to_ex is not None
+
+    check_graph_grad_fns(egg_formatted_to_ex)
+
+    assert isinstance(explainee2(egg_formatted_to_ex), torch.Tensor)
+    
+    assert explainee2(egg_formatted_to_ex).shape == (2, 3)
 
 def test_oral_ceograph_egg_to_ex(gen_output_oral_ceograph, 
                                  explainee_oral_ceograph):

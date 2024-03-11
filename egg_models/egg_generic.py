@@ -218,6 +218,8 @@ class EggGenericTrainer(BaseTrainer):
         if generated['dis_edge_feats'] is not None: 
             E = misc.concat_one_hot_to_labels(generated['dis_edge_feats'], 
                                               indices=self.model.dis_edge_feats)
+        else: 
+            E = None
 
         if generated['cont_edge_feats'] is not None: 
             E = misc.concat_possible_none_tensors(generated['cont_edge_feats'], 
