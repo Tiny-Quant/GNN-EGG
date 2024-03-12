@@ -1,0 +1,9 @@
+{
+    "batch_size": 1, 
+    "temp": 1.0, 
+    "optimizer_name": "Adam" , 
+    "num_epochs": 1, 
+    "learning_rate": 0.01, 
+    "tensorboard_path": "", 
+    "checkpoint_path": "", 
+}
