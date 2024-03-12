@@ -460,10 +460,9 @@ def ex_to_egg(obs_batch, num_cell_types) -> List[torch.tensor]:
     A_list = [graph.edge_index for graph in data_list]
     E_list = [graph.edge_attr for graph in data_list]
 
-    # TODO: Also return feature type indices for matching function. 
     return [build_batch(X_list), build_batch(A_list), build_batch(E_list)]
 
-def egg_to_egg(self, generated: dict) -> List[torch.tensor]: 
+def egg_to_egg(generated: dict) -> List[torch.tensor]: 
     """
     Implementation of egg_to_egg for the trainer of an EggGeneric model 
     for oral ceograph data. 

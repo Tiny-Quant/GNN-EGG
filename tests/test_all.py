@@ -14,6 +14,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch_geometric as pyg
 from torch_geometric.utils import contains_isolated_nodes, contains_self_loops
+from torch_geometric.data import Batch
 
 from egg_models import egg_generic
 from egg_models import egg_generic_losses
@@ -399,6 +400,17 @@ def test_oral_ceograph_egg_to_ex(gen_output_oral_ceograph,
     
     assert explainee_oral_ceograph(egg_formatted_to_ex).shape == (2, 2)
 
+def test_oral_ceograph_egg_to_egg(gen_output_oral_ceograph):
+    gen_X, gen_A, gen_E = oral_ceograph.egg_to_egg(gen_output_oral_ceograph) 
+
+    assert isinstance(gen_X, torch.Tensor)
+    assert isinstance(gen_A, torch.Tensor)
+    assert isinstance(gen_E, torch.Tensor)
+
+    assert hasattr(gen_X, 'grad_fn')
+    assert hasattr(gen_A, 'grad_fn')
+    assert hasattr(gen_E, 'grad_fn') 
+
 @pytest.mark.parametrize("sub_sampler", [
     (None), 
     ("default"), 
@@ -587,3 +599,36 @@ def test_Edge_Penalty(generator, generator2, generator_oral_ceograph):
     check_at_least_1_grad(loss_4, generator)
     check_at_least_1_grad(loss_5, generator2)
     check_at_least_1_grad(loss_6, generator_oral_ceograph)
+
+def test_GEDasMatchLoss_oral_ceograph(gen_output_oral_ceograph, data_list_oral_ceograph, 
+                        generator_oral_ceograph, 
+                        device):
+    """
+    Test the output shape, range, and all model gradients for the GEDasMatchLoss 
+    function for the oral ceograph test case. 
+    """
+    loss_fn = egg_generic_losses.GEDasMatchLoss(
+        node_size=10, 
+        cont_node_indices=(slice(0, 11), ), 
+        dis_node_indices=(slice(11, 16), ),
+        cont_edge_indices=(slice(1, 3), ), 
+        dis_edge_indices=(3, ), 
+    )
+
+    gen = oral_ceograph.egg_to_egg(gen_output_oral_ceograph)
+
+    ex_batch = Batch.from_data_list(data_list_oral_ceograph).to(device)
+
+    obs = oral_ceograph.ex_to_egg(ex_batch, 4)
+
+    loss = loss_fn(*gen, *obs)
+
+    assert loss.shape == (2,)
+
+    # assert (aff_mat <= 0.0).all()
+    # assert (aff_mat >= -1.0).all()
+
+    assert (loss >= 0.0).all()
+    assert (loss <= gen[0].shape[1] + gen[2].shape[1]).all()
+
+    check_grads_exist(loss, generator_oral_ceograph)

@@ -125,6 +125,10 @@ class EdgePenalty(nn.Module):
 
 # %%
 class GEDasMatchLoss(nn.Module):
+    """
+    Computes a positive upper bound on the number of edits required to make 
+    G2 subgraph isomorphic (ie deletes cost 0) to G1. 
+    """
     # TODO: Consider the case where indices are None. 
     def __init__(self, node_size, 
                  cont_node_indices: tuple, 
@@ -133,8 +137,9 @@ class GEDasMatchLoss(nn.Module):
                  dis_edge_indices: tuple, 
                  cont_edit_weight=0.25, 
                  dis_edit_weight=0.5, 
-                 grad_strength=1e-1, 
-                 device=torch.device(0)):
+                 #grad_strength=1e-1, 
+                 #device=torch.device(0)
+                 ):
         super(GEDasMatchLoss, self).__init__()
         self.max_gen_nodes = node_size
 
@@ -146,14 +151,18 @@ class GEDasMatchLoss(nn.Module):
         self.cont_edit_weight = cont_edit_weight
         self.dis_edit_weight = dis_edit_weight
 
-        self.grad_strength = grad_strength
+        # self.grad_strength = grad_strength
 
-        self.device = device
+        # self.device = device
 
     def cont_edit_aff_fn(self, 
                          feat1: torch.tensor, 
                          feat2: torch.tensor) -> torch.tensor:
         """
+        Computes the normalized cosine distance between batches of feature 
+        vectors. The returned tensor values should be -2 for opposite, -1 for 
+        orthogonal or 0 for same.  
+
         feat1: [b, n1, f]
         feat2: [b, n2, f]
         return: [b, n1, n2]
@@ -163,7 +172,11 @@ class GEDasMatchLoss(nn.Module):
         feat2_norm = F.normalize(feat2, p=2, dim=-1)
 
         cos_sim_mat = torch.einsum('bij, bkj -> bik', 
-                                feat1_norm, feat2_norm)
+                                   feat1_norm, feat2_norm)
+
+        # tol = 1e-5
+        # assert (-1 * (1 - cos_sim_mat) >= -2. - tol).all()
+        # assert (-1 * (1 - cos_sim_mat) <= 0. + tol).all()
 
         return -1 * (1 - cos_sim_mat)
     
@@ -171,16 +184,25 @@ class GEDasMatchLoss(nn.Module):
                         feat1: torch.tensor, 
                         feat2: torch.tensor) -> torch.tensor:
         """
+        Computes the un-normalized cosine distance between batches of one-hot 
+        (or binary[0, 1]) features vectors. The returned tensor values should 
+        be close to -1 for differing classes and 0 for similarly classes. 
+        The values do not reach -2 because unordered discrete features cannot 
+        be "opposites" of each other.
+
         feat1: [b, n1, f]
         feat2: [b, n2, f]
         return: [b, n1, n2]
         """
 
-        delta = feat1.unsqueeze(2) - feat2.unsqueeze(1)
+        cos_sim_mat = torch.einsum('bij, bkj -> bik', 
+                                   feat1, feat2)
 
-        dis_edit_cost = (delta / (delta + self.grad_strength)).mean(dim=-1)
+        # tol = 1e-5
+        # assert (-1 * (1 - cos_sim_mat) >= -1. - tol).all()
+        # assert (-1 * (1 - cos_sim_mat) <= 0. + tol).all()
 
-        return -1 * dis_edit_cost
+        return -1 * (1 - cos_sim_mat)
 
     def mixed_edit_aff_fn(self, 
                           feat1: torch.tensor, feat2:torch.tensor,
@@ -190,8 +212,6 @@ class GEDasMatchLoss(nn.Module):
         Computes the -1 * edit distance or the edit affinity for feature vectors 
         with continuous and discrete values. By default the return values range 
         from [-1, 0]. 
-
-        Indices should be given as [start, end)
 
         feat1: [b, n1, f]
         feat2: [b, n2, f]
@@ -249,3 +269,14 @@ class GEDasMatchLoss(nn.Module):
         score = pygm.utils.compute_affinity_score(dis_match_mat, aff_mat)
 
         return -1 * score # Returns a positive upper bound of GED.  
+
+# %%
+class StructuralLoss(nn.Module):
+    def __init__(self, GED_fn: nn.Module, gamma: torch.Tensor):
+        super(StructuralLoss, self).__init__()
+        self.GED_fn = GED_fn
+        self.gamma = gamma
+
+    def forward(self): 
+        return None
+        

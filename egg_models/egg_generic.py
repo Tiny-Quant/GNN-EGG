@@ -173,8 +173,12 @@ class EggGenericTrainer(BaseTrainer):
                  optimizer: torch.optim.Optimizer, 
                  loss_term_weights: torch.tensor, 
                  tensorboard_path: str, 
-                 checkpoint_path: str, 
+                 checkpoint_path: str,
                  save_every=1, 
+                 cont_node_indices: Optional[Tuple] = None, 
+                 dis_node_indices: Optional[Tuple] = None,
+                 cont_edge_indices: Optional[Tuple] = None, 
+                 dis_edge_indices: Optional[Tuple] = None, 
                  edge_budget=None, 
                  reinforce_pred=False, 
                  reinforce_struct=False,
@@ -186,18 +190,26 @@ class EggGenericTrainer(BaseTrainer):
                          tensorboard_path, checkpoint_path, save_every)
 
         self.batch_size = self.model.batch_size
+        
+        # Explainee parameters: 
         self.explainee = explainee
         self.target = target
-
         self.obs_data_list = obs_data_list
+
+        # Loss term parameters: 
         self.loss_term_weights = loss_term_weights
         if edge_budget is None:
             self.edge_budget = self.model.max_node_size
         else: 
             self.edge_budget = edge_budget
+        self.cont_node_indices = cont_node_indices # Should match ex_to_egg and
+        self.dis_node_indices = dis_node_indices   # egg_to_egg format indices.
+        self.cont_edge_indices = cont_edge_indices
+        self.dis_edge_indices = dis_edge_indices
 
         self.reinforce_pred = reinforce_pred
         self.reinforce_struct = reinforce_struct
+
         self.batches_per_param = batches_per_param
         self.sub_sampler = sub_sampler
         self.repeat_sampling = repeat_sampling
