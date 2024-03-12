@@ -1,9 +1,10 @@
 # %% Dependencies
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Dict
 from tqdm import tqdm
 
 import torch
 import torch.nn as nn 
+import torch.nn.functional as F
 #from torch.utils.data import DataLoader
 from torch_geometric.loader import DataLoader, GraphSAINTRandomWalkSampler
 from torch_geometric.data import Data, Batch
@@ -17,7 +18,9 @@ from egg_models.generic_layers import (
     ContFeatMatrix, ConcreteLayer, BinaryConcrete
 )
 from egg_models.base_trainer import BaseTrainer
-from egg_models.egg_generic_losses import PredLossBatched
+from egg_models.egg_generic_losses import(
+    PredLossBatched, EdgePenalty, StructuralLoss, GEDasMatchLoss
+)
 from utils import misc
 
 # %% Generator Model 
@@ -168,17 +171,19 @@ class EggGenericTrainer(BaseTrainer):
     def __init__(self, 
                  model: EggGeneric, 
                  explainee: nn.Module, 
-                 target: torch.tensor, 
+                 target: torch.Tensor, 
+                 uninfo_target: torch.Tensor, 
                  obs_data_list: list, 
                  optimizer: torch.optim.Optimizer, 
-                 loss_term_weights: torch.tensor, 
+                 loss_term_weights: torch.Tensor, 
                  tensorboard_path: str, 
                  checkpoint_path: str,
                  save_every=1, 
-                 cont_node_indices: Optional[Tuple] = None, 
-                 dis_node_indices: Optional[Tuple] = None,
-                 cont_edge_indices: Optional[Tuple] = None, 
-                 dis_edge_indices: Optional[Tuple] = None, 
+                 avg_embed_targets: Optional[Dict[str, torch.Tensor]]=None, 
+                 cont_node_indices: Optional[Tuple]=None, 
+                 dis_node_indices: Optional[Tuple]=None,
+                 cont_edge_indices: Optional[Tuple]=None, 
+                 dis_edge_indices: Optional[Tuple]=None, 
                  edge_budget=None, 
                  reinforce_pred=False, 
                  reinforce_struct=False,
@@ -194,6 +199,7 @@ class EggGenericTrainer(BaseTrainer):
         # Explainee parameters: 
         self.explainee = explainee
         self.target = target
+        self.gamma = F.cross_entropy(self.target, uninfo_target)
         self.obs_data_list = obs_data_list
 
         # Loss term parameters: 
@@ -202,8 +208,6 @@ class EggGenericTrainer(BaseTrainer):
             self.edge_budget = self.model.max_node_size
         else: 
             self.edge_budget = edge_budget
-        self.cont_node_indices = cont_node_indices # Should match ex_to_egg and
-        self.dis_node_indices = dis_node_indices   # egg_to_egg format indices.
         self.cont_edge_indices = cont_edge_indices
         self.dis_edge_indices = dis_edge_indices
 
@@ -213,6 +217,24 @@ class EggGenericTrainer(BaseTrainer):
         self.batches_per_param = batches_per_param
         self.sub_sampler = sub_sampler
         self.repeat_sampling = repeat_sampling
+
+        # Create loss functions:  
+        self.pred_loss_fn = PredLossBatched(self.target, self.explainee,
+            self.avg_embed_targets
+        )
+
+        self.edge_loss_fn = EdgePenalty(self.edge_budget)
+
+        self.GED_fn = GEDasMatchLoss(self.model.max_node_size, 
+                                     # Should match ex_to_egg and
+                                     # egg_to_egg format indices.
+                                     cont_node_indices, 
+                                     dis_node_indices,  
+                                     cont_edge_indices, 
+                                     dis_edge_indices)
+
+        self.struct_loss_fn = StructuralLoss(self.GED_fn, self.explainee, 
+                                             self.gamma, self.target)
 
     def egg_to_ex(self, generated: dict) -> Batch: 
         """
@@ -331,38 +353,40 @@ class EggGenericTrainer(BaseTrainer):
     def compute_loss_terms(self, 
                            generated: dict, 
                            obs_batch: Batch, 
-                           gen_ex_format: List[torch.tensor], 
+                           gen_ex_format: Batch, 
+                           gen_egg_format: List[torch.tensor], 
                            obs_egg_format: List[torch.tensor]) -> torch.tensor:
 
-        # TODO: Add distance from average class embedding. 
-        pred_loss = PredLossBatched(gen_ex_format).mean(dim=1)
+        pred_loss, gen_act, gen_act_batch = (
+            self.pred_loss_fn(gen_ex_format)
+        )
 
         if self.reinforce_pred:
-            # pred_loss = (pred_loss.mean() + 
-            #                 (1 / pred_loss) @ 
-            #                 (-generated['C_x_logLik'].sum(axis=1) +  
-            #                  -generated['A_logLik'].sum(axis=1) + 
-            #                  -generated['C_e_logLik'].sum(axis=1))
-            # )
             pred_loss = pred_loss.mean() + (
                 ((1 / pred_loss) @ -generated['C_x_logLik']).sum() + 
                 ((1 / pred_loss) @ -generated['C_e_logLik']).sum() + 
                 ((1 / pred_loss) @ -generated['A_logLik']).sum()
             )
-
         
         else: 
             pred_loss = pred_loss.mean()
 
+        edge_loss = self.edge_loss_fn(self.model.AdjacencyMatrix.probs)
 
-        edge_pen = (torch.norm(self.model.AdjacencyMatrix.probs, p=2) + 
-                    nn.functional.softplus(
-                        self.model.AdjacencyMatrix.probs.sum() - 
-                        (self.edge_budget)) ** 2)
+        struct_loss = self.struct_loss_fn(gen_egg_format, obs_batch, 
+                                            gen_act, gen_act_batch)
 
-       # TODO compute matching loss.  
+        if self.reinforce_struct:
+            struct_loss = pred_loss.mean() + (
+                ((1 / struct_loss) @ -generated['C_x_logLik']).sum() + 
+                ((1 / struct_loss) @ -generated['C_e_logLik']).sum() + 
+                ((1 / struct_loss) @ -generated['A_logLik']).sum()
+            )
 
-       # TODO compute embedding distance. 
+        else: 
+            struct_loss = struct_loss.mean()
+
+        return torch.stack([pred_loss, edge_loss, struct_loss])
 
     def train_one_epoch(self): 
 
@@ -375,13 +399,13 @@ class EggGenericTrainer(BaseTrainer):
                                            desc="Observed Data", leave=False)): 
             
             generated = self.model()
-
             gen_ex_format = self.egg_to_ex(generated)
-            
+            gen_egg_format = self.egg_to_egg(generated)
             obs_egg_format = self.ex_to_egg(obs_batch)
 
             loss_terms = self.compute_loss_terms(generated, obs_batch, 
                                                  gen_ex_format, 
+                                                 gen_egg_format,  
                                                  obs_egg_format)
 
             with torch.no_grad():
