@@ -218,6 +218,12 @@ def avg_embed_targets_oral_ceograph(device):
 
     return mock_embeds
 
+@pytest.fixture
+def gamma_oral_ceograph(target_oral_ceograph): 
+    uninfo = torch.tensor([0.5, 0.5])
+    gamma = F.cross_entropy(target_oral_ceograph, uninfo)
+    return gamma
+
 # %% Helper Functions
 def check_grads_exist(loss: torch.tensor, model: torch.nn.Module, retain=False): 
     """
@@ -545,7 +551,7 @@ def test_dict_cos_dist(dict1, dict2, act_pool_func, agg_func, expected):
     General test cases for embedding cosine distance. 
     """
     loss = egg_generic_losses.dict_cos_dist(dict1, dict2, 
-                                            batch_indices=None, 
+                                            batch_indices1=None, 
                                             act_pool_func=act_pool_func, 
                                             agg_func=agg_func) 
 
@@ -565,7 +571,7 @@ def test_PredLossBatched_oral_ceograph(target_oral_ceograph,
     )
     egg_formatted_to_ex = oral_ceograph.egg_to_ex(gen_output_oral_ceograph)
 
-    loss, activations = loss_func(egg_formatted_to_ex)
+    loss, activations, batch_indices = loss_func(egg_formatted_to_ex)
 
     assert loss.shape == (2,) 
 
@@ -630,5 +636,53 @@ def test_GEDasMatchLoss_oral_ceograph(gen_output_oral_ceograph, data_list_oral_c
 
     assert (loss >= 0.0).all()
     assert (loss <= gen[0].shape[1] + gen[2].shape[1]).all()
+
+    check_grads_exist(loss, generator_oral_ceograph)
+
+def test_StructuralLoss_oral_ceograph(explainee_oral_ceograph, 
+                                      gamma_oral_ceograph, 
+                                      target_oral_ceograph, 
+                                      gen_output_oral_ceograph, 
+                                      data_list_oral_ceograph,
+                                      generator_oral_ceograph, 
+                                      avg_embed_targets_oral_ceograph, 
+                                      device): 
+    """
+    Tests that the structural loss that integrates GED, prediction, and 
+    embedding losses returns the correct shape and creates all gradients.  
+    """
+    GED_fn = egg_generic_losses.GEDasMatchLoss(
+        node_size=10, 
+        cont_node_indices=(slice(0, 11), ), 
+        dis_node_indices=(slice(11, 16), ),
+        cont_edge_indices=(slice(1, 3), ), 
+        dis_edge_indices=(3, ), 
+    )
+
+    loss_fn = egg_generic_losses.StructuralLoss(
+        GED_fn, explainee_oral_ceograph, 
+        gamma_oral_ceograph, target_oral_ceograph
+    )
+
+    pred_loss = egg_generic_losses.PredLossBatched(
+        target=target_oral_ceograph, explainee=explainee_oral_ceograph, 
+        avg_embed_targets=avg_embed_targets_oral_ceograph
+    )
+
+    gen_ex = oral_ceograph.egg_to_ex(gen_output_oral_ceograph)
+
+    gen_egg = oral_ceograph.egg_to_egg(gen_output_oral_ceograph)
+
+    obs_ex = Batch.from_data_list(data_list_oral_ceograph).to(device)
+
+    obs_egg = oral_ceograph.ex_to_egg(obs_ex, 4)
+
+    _, activations, batch_indices = pred_loss(gen_ex)
+
+    loss = loss_fn(gen_egg, obs_egg, obs_ex, 
+                   gen_acts=activations, 
+                   gen_acts_batch=batch_indices)
+
+    assert loss.shape == (2, )
 
     check_grads_exist(loss, generator_oral_ceograph)

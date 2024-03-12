@@ -43,8 +43,10 @@ def activation_hook(model: nn.Module,
 
 def dict_cos_dist(dict1: Dict[str, torch.Tensor], 
                   dict2: Dict[str, torch.Tensor], 
-                  batch_indices: torch.Tensor, 
+                  batch_indices1: torch.Tensor, 
+                  batch_indices2=None,  
                   act_pool_func: Callable=pyg.nn.global_mean_pool, 
+                  expand2=True, 
                   agg_func: Callable=torch.sum):
     """
     Returns the aggregated cosine distance by batch between two dictionaries 
@@ -53,8 +55,11 @@ def dict_cos_dist(dict1: Dict[str, torch.Tensor],
     """
     agg_cos_dist = []
     for key in set(dict1.keys()) & set(dict2.keys()): 
-        tensor1 = act_pool_func(dict1[key], batch=batch_indices)
-        tensor2 = dict2[key].expand_as(tensor1).to(tensor1.device)
+        tensor1 = act_pool_func(dict1[key], batch=batch_indices1)
+        if expand2: 
+            tensor2 = dict2[key].expand_as(tensor1).to(tensor1.device)
+        else: 
+            tensor2 = act_pool_func(dict2[key], batch=batch_indices2)
 
         cos_sim = F.cosine_similarity(tensor1, tensor2, dim=1)
 
@@ -92,17 +97,17 @@ class PredLossBatched(nn.Module):
             )
             
             loss = loss + dict_cos_dist(activations, self.avg_embed_targets, 
-                                        batch_indices=batch.batch)
+                                        batch_indices1=batch.batch)
 
             remove_hooks()
 
-            return loss, activations
+            return loss, activations, batch.batch
 
         else: 
             explainee_pred = self.explainee(batch)
             loss = self.criterion(explainee_pred, 
                                 self.target.expand_as(explainee_pred))
-            return loss, None
+            return loss, None, None
 
 # %%
 class EdgePenalty(nn.Module):
@@ -272,11 +277,57 @@ class GEDasMatchLoss(nn.Module):
 
 # %%
 class StructuralLoss(nn.Module):
-    def __init__(self, GED_fn: nn.Module, gamma: torch.Tensor):
+    """
+    Implements the structural loss term in (cite). 
+    """
+    def __init__(self, 
+                 GED_fn: nn.Module, 
+                 explainee: nn.Module, 
+                 gamma: torch.Tensor, 
+                 target: torch.Tensor, 
+                 criterion = nn.CrossEntropyLoss(reduction='none'), 
+                 uninfo_pen=-1): 
         super(StructuralLoss, self).__init__()
-        self.GED_fn = GED_fn
-        self.gamma = gamma
 
-    def forward(self): 
-        return None
+        self.GED_fn = GED_fn
+        self.explainee = explainee
+        self.gamma = gamma
+        self.target = target
+        self.criterion = criterion
+        self.uninfo_pen = uninfo_pen
+
+
+    def forward(self, 
+                gen_egg: List[torch.Tensor], obs_egg: List[torch.Tensor], 
+                obs_ex, 
+                gen_acts: Optional[Dict[str, torch.Tensor]]=None, 
+                gen_acts_batch: Optional[torch.Tensor]=None):
+
+        approx_GED = self.GED_fn(*gen_egg, *obs_egg)
+
+        if gen_acts is not None: 
+            activations, remove_hooks = (
+                activation_hook(self.explainee, gen_acts.keys())
+            ) 
+            explainee_pred = self.explainee(obs_ex)
+            remove_hooks()
+
+            embed_loss = dict_cos_dist(activations, gen_acts, 
+                                       batch_indices1=obs_ex.batch, 
+                                       batch_indices2=gen_acts_batch, 
+                                       expand2=False)
+
+        else: 
+            explainee_pred = self.explainee(obs_ex)
+            embed_loss = torch.tensor(0.)
+        
+        try: 
+            omega = 1 / (self.gamma - self.criterion(
+                explainee_pred, 
+                self.target.expand_as(explainee_pred).to(explainee_pred.device)
+            ))
+        except ZeroDivisionError: 
+            omega = self.uninfo_pen
+
+        return omega * (approx_GED + embed_loss)
         
