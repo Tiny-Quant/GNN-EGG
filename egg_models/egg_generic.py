@@ -412,7 +412,7 @@ class EggGenericTrainer(BaseTrainer):
 
             with torch.no_grad():
                 running_total_loss_terms += (
-                    loss_terms @ self.loss_term_weights
+                    loss_terms * self.loss_term_weights
                 )
 
             total_loss = loss_terms @ self.loss_term_weights
