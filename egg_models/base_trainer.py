@@ -29,7 +29,8 @@ class BaseTrainer:
         self.tensorboard_path = tensorboard_path
         self.checkpoint_path = checkpoint_path
         self.save_every = save_every
-        self.writer = SummaryWriter(tensorboard_path)
+        print(self.tensorboard_path)
+        self.writer = SummaryWriter(self.tensorboard_path)
 
     @abstractmethod
     def train_one_epoch(self):
@@ -38,7 +39,7 @@ class BaseTrainer:
     def per_epoch_logger(self, result: dict, epoch: int):
 
         for key in result.keys():
-            self.write.add_scalar(key, result[key], epoch)
+            self.writer.add_scalar(key, result[key], epoch)
     
     def save_checkpoint(self, epoch, total_epochs):
 
