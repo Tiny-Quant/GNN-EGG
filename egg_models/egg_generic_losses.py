@@ -106,7 +106,9 @@ class PredLossBatched(nn.Module):
         else: 
             explainee_pred = self.explainee(batch)
             loss = self.criterion(explainee_pred, 
-                                self.target.expand_as(explainee_pred))
+                                  self.target.expand_as(explainee_pred).
+                                  to(explainee_pred.device)
+            )
             return loss, None, None
 
 # %%
