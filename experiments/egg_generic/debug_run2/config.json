@@ -1,9 +1,14 @@
 {
-    "batch_size": 1, 
-    "temp": 1.0, 
+    "num_epochs": 10, 
     "optimizer_name": "Adam" , 
-    "num_epochs": 1, 
     "learning_rate": 0.01, 
-    "tensorboard_path": "", 
-    "checkpoint_path": "", 
+    "tensorboard_path": "experiments/egg_generic/debug_run2/tensorboard", 
+    "checkpoint_path": "experiments/egg_generic/debug_run2/checkpoints", 
+
+    "PATH_TO_OBS_DATA": "data/slides/HN/HN_train_data_list.pkl", 
+    "batch_size": 2, 
+    "temp": 0.1, 
+    "pred_loss_weight": 1.0, 
+    "edge_loss_weight": 100.0, 
+    "struct_loss_weight": 1.0
 }

@@ -1,6 +1,6 @@
 # %% Dependencies
 import typing
-from typing import List
+from typing import List, Optional, Tuple, Dict
 
 import torch
 import torch.nn as nn 
@@ -19,6 +19,8 @@ import json
 import numpy as np
 
 from egg_models.egg_generic import EggGeneric, EggGenericTrainer
+
+from utils import oral_ceograph
 
 # fix random seeds for reproducibility
 SEED = 123
@@ -67,24 +69,24 @@ if __name__ == '__main__':
     ## Observed Data ###########################################################
     ### Write any code necessary to load your observed data samples here. ######
     ############################################################################
-    PATH_TO_OBS_DATA = "" # Expects a dill/pickled list of data objects.
-    with open(PATH_TO_OBS_DATA) as f:
+    #PATH_TO_OBS_DATA = "" # Expects a dill/pickled list of data objects.
+    with open(PATH_TO_OBS_DATA, 'rb') as f:
         obs_data_list = pickle.load(f)
 
     ############################################################################
     ## Load Explainee Model ####################################################
     ### Write any code necessary to load your explainee model here. ############
     ############################################################################
-    explainee = None 
+    explainee = oral_ceograph.NucleiNet(11, 2, batch=True)
 
     explainee.to(device)
     explainee.load_state_dict(torch.load(
-            "path/to/explainee.pt", 
+            "data/explainees/HN/epoch_15.pt", 
             map_location=device
-        )
+        ), 
+        strict=False
     )
     explainee.eval()
-    
 
     ############################################################################
     ## Get Explainee Targets ###################################################
@@ -92,23 +94,23 @@ if __name__ == '__main__':
     ### explainee model ie what values should be return when generated graphs ## 
     ### are passed to your model? ##############################################
     ############################################################################
-    target = None
+    target = torch.tensor([1., 0.])
+    uninfo_target = torch.tensor([0.5, 0.5])
     avg_class_embedding = None
-
-    def get_explainee_embedding(): 
-        """
-
-        """
-        pass
     
     ############################################################################
     ## Generator Parameters ####################################################
     ############################################################################
-    MAX_NODE_SIZE = None # Int. 
-    CONT_NODE_FEATS = None # Int. 
-    DIS_NODE_FEATS = None # Tuple(cats, )
-    CONT_EDGE_FEATS = None # Int.
-    DIS_EDGE_FEATS = None # Tuple(cats, )
+    MAX_NODE_SIZE = 25 # Int. 
+    CONT_NODE_FEATS = 11 # Int. 
+    DIS_NODE_FEATS = (4, ) # Tuple(cats, )
+    CONT_EDGE_FEATS = 2 # Int.
+    #DIS_EDGE_FEATS = None # Tuple(cats, )
+
+    CONT_NODE_INDICES=(slice(0, 11), )
+    DIS_NODE_INDICES=(slice(11, 16), )
+    CONT_EDGE_INDICES=(slice(1, 3), )
+    DIS_EDGE_INDICES=(3, )
 
     ############################################################################
     ## Data Processing Functions ###############################################
@@ -116,41 +118,60 @@ if __name__ == '__main__':
     class SpecificTrainer(EggGenericTrainer): 
         def __init__(self, 
                     model: EggGeneric, 
-                    obs_data_list: list, 
+                    explainee: nn.Module, 
+                    target: torch.Tensor, 
+                    uninfo_target: torch.Tensor, 
+                    obs_data_list: List, 
                     optimizer: torch.optim.Optimizer, 
-                    loss_term_weights: torch.tensor, 
+                    loss_term_weights: torch.Tensor, 
                     tensorboard_path: str, 
-                    checkpoint_path: str, 
+                    checkpoint_path: str,
                     save_every=1, 
+                    avg_embed_targets: Optional[Dict[str, torch.Tensor]]=None, 
+                    cont_node_indices: Optional[Tuple]=None, 
+                    dis_node_indices: Optional[Tuple]=None,
+                    cont_edge_indices: Optional[Tuple]=None, 
+                    dis_edge_indices: Optional[Tuple]=None, 
+                    edge_budget=None, 
+                    reinforce_pred=False, 
+                    reinforce_struct=False,
                     sub_sampler="default", 
                     repeat_sampling=False, 
-                    batches_per_param=1):
-
-            super().__init__(model, optimizer, 
-                            tensorboard_path, checkpoint_path, save_every)
-
-            self.batch_size = self.model.batch_size
-
-            self.obs_data_list = obs_data_list
-            self.loss_term_weights = loss_term_weights
-            self.batches_per_param = batches_per_param
-            self.sub_sampler = sub_sampler
-            self.repeat_sampling = repeat_sampling
+                    batches_per_param=1,): 
+            super().__init__(
+                model=model, explainee=explainee, 
+                target=target, uninfo_target=uninfo_target,
+                obs_data_list=obs_data_list, optimizer=optimizer, 
+                loss_term_weights=loss_term_weights,
+                tensorboard_path=tensorboard_path, 
+                checkpoint_path=checkpoint_path, save_every=save_every,
+                avg_embed_targets=avg_embed_targets, 
+                cont_node_indices=cont_node_indices,
+                dis_node_indices=dis_node_indices, 
+                cont_edge_indices=cont_edge_indices,
+                dis_edge_indices=dis_edge_indices, 
+                edge_budget=edge_budget, 
+                reinforce_pred=reinforce_pred,reinforce_struct=reinforce_struct, 
+                sub_sampler=sub_sampler, repeat_sampling=repeat_sampling,
+                batches_per_param=batches_per_param
+            )
 
         def egg_to_ex(self, generated: dict):
             """
             """
-            pass 
+            return oral_ceograph.egg_to_ex(generated)
 
         def ex_to_egg(self, obs_batch) -> List[torch.tensor]:
             """
             """
-            pass 
+            return oral_ceograph.ex_to_egg(obs_batch, 
+                                           self.model.dis_node_feats[0])
 
         def egg_to_egg(self, generated: dict) -> List[torch.tensor]: 
             """
             Post-processor to fix formatting for loss terms.
             """
+            return oral_ceograph.egg_to_egg(generated)
 
     ############################################################################
     ## No changes necessary below. #############################################
@@ -174,9 +195,20 @@ if __name__ == '__main__':
         raise ValueError(f"Unsupported optimizer: {optimizer_name}")
 
     # Define trainer.  
-    trainer = SpecificTrainer(generator, explainee, obs_data_list, 
-                              optimizer, tensorboard_path, checkpoint_path, 
-                              save_every=1, batches_per_param=1)
+    trainer = SpecificTrainer(
+        model=generator, explainee=explainee, 
+        target=target, uninfo_target=uninfo_target, 
+        loss_term_weights=torch.tensor(
+            [pred_loss_weight, edge_loss_weight, struct_loss_weight]
+        ), 
+        obs_data_list=obs_data_list, 
+        cont_node_indices=CONT_NODE_INDICES, 
+        dis_node_indices=DIS_NODE_INDICES, 
+        cont_edge_indices=CONT_EDGE_INDICES, 
+        dis_edge_indices=DIS_EDGE_INDICES, 
+        optimizer=optimizer, 
+        tensorboard_path=tensorboard_path, checkpoint_path=checkpoint_path, 
+    )
     
     trainer.train(num_epochs, opt.resume_path, None)
     
