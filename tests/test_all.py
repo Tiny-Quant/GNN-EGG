@@ -145,10 +145,10 @@ def data_list2(generator2, explainee2, gen_output2):
     dummy_trainer = egg_generic.EggGenericTrainer(
         model=generator2, 
         explainee=explainee2, 
-        target=None, 
+        target=torch.tensor([1.0, 0.0, 0.0]), 
+        uninfo_target=torch.tensor([0.33, 0.33, 0.33]), 
         obs_data_list=None, 
         optimizer=None, 
-        loss_term_weights=None, 
         tensorboard_path=None, 
         checkpoint_path=None,
     )
@@ -172,10 +172,10 @@ def EggGenericTrainer2(generator2, explainee2, data_list2):
     mock_trainer = egg_generic.EggGenericTrainer(
         model=generator2, 
         explainee=explainee2, 
-        target=None, 
+        target=torch.tensor([1.0, 0.0, 0.0]), 
+        uninfo_target=torch.tensor([0.33, 0.33, 0.33]), 
         obs_data_list=data_list2, 
         optimizer=None, 
-        loss_term_weights=None, 
         tensorboard_path=None, 
         checkpoint_path=None,
     )
@@ -190,10 +190,10 @@ def EggGenericTrainer_oral_ceograph(generator_oral_ceograph,
     mock_trainer = egg_generic.EggGenericTrainer(
        model=generator_oral_ceograph, 
        explainee=explainee_oral_ceograph, 
-       target=None, 
+       target=torch.tensor([1.0, 0.0]), 
+       uninfo_target=torch.tensor([0.5, 0.5]),
        obs_data_list=data_list_oral_ceograph, 
        optimizer=None, 
-       loss_term_weights=None, 
        tensorboard_path=None, 
        checkpoint_path=None, 
     )

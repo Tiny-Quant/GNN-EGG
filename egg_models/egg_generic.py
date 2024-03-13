@@ -175,7 +175,6 @@ class EggGenericTrainer(BaseTrainer):
                  uninfo_target: torch.Tensor, 
                  obs_data_list: list, 
                  optimizer: torch.optim.Optimizer, 
-                 loss_term_weights: torch.Tensor, 
                  tensorboard_path: str, 
                  checkpoint_path: str,
                  save_every=1, 
@@ -184,6 +183,7 @@ class EggGenericTrainer(BaseTrainer):
                  dis_node_indices: Optional[Tuple]=None,
                  cont_edge_indices: Optional[Tuple]=None, 
                  dis_edge_indices: Optional[Tuple]=None, 
+                 loss_term_weights=torch.tensor([1.0, 1.0, 1.0]), 
                  edge_budget=None, 
                  reinforce_pred=False, 
                  reinforce_struct=False,
@@ -203,13 +203,14 @@ class EggGenericTrainer(BaseTrainer):
         self.obs_data_list = obs_data_list
 
         # Loss term parameters: 
-        self.loss_term_weights = loss_term_weights
+        self.loss_term_weights = (
+            loss_term_weights.to(self.model.device_param.device)
+        )
+
         if edge_budget is None:
             self.edge_budget = self.model.max_node_size
         else: 
             self.edge_budget = edge_budget
-        self.cont_edge_indices = cont_edge_indices
-        self.dis_edge_indices = dis_edge_indices
 
         self.reinforce_pred = reinforce_pred
         self.reinforce_struct = reinforce_struct
@@ -220,7 +221,7 @@ class EggGenericTrainer(BaseTrainer):
 
         # Create loss functions:  
         self.pred_loss_fn = PredLossBatched(self.target, self.explainee,
-            self.avg_embed_targets
+            avg_embed_targets=avg_embed_targets
         )
 
         self.edge_loss_fn = EdgePenalty(self.edge_budget)
@@ -373,8 +374,8 @@ class EggGenericTrainer(BaseTrainer):
 
         edge_loss = self.edge_loss_fn(self.model.AdjacencyMatrix.probs)
 
-        struct_loss = self.struct_loss_fn(gen_egg_format, obs_batch, 
-                                            gen_act, gen_act_batch)
+        struct_loss = self.struct_loss_fn(gen_egg_format, obs_egg_format, 
+                                          obs_batch, gen_act, gen_act_batch)
 
         if self.reinforce_struct:
             struct_loss = pred_loss.mean() + (
@@ -395,9 +396,10 @@ class EggGenericTrainer(BaseTrainer):
         running_total_loss_terms = torch.zeros_like(self.loss_term_weights)
 
         self.create_data_loader()
-        for i, obs_batch in enumerate(tqdm(self.obs_loader, 
+        for i, obs_batch in enumerate(tqdm(self.obs_data_loader, 
                                            desc="Observed Data", leave=False)): 
-            
+            obs_batch.to(self.model.device_param.device)
+
             generated = self.model()
             gen_ex_format = self.egg_to_ex(generated)
             gen_egg_format = self.egg_to_egg(generated)
@@ -410,10 +412,10 @@ class EggGenericTrainer(BaseTrainer):
 
             with torch.no_grad():
                 running_total_loss_terms += (
-                    loss_terms @ self.loss_term_weights.T
+                    loss_terms @ self.loss_term_weights
                 )
 
-            total_loss = loss_terms @ self.loss_term_weights.T
+            total_loss = loss_terms @ self.loss_term_weights
             total_loss.backward()
 
             if (i+1) % self.batches_per_param == 0:
@@ -423,10 +425,10 @@ class EggGenericTrainer(BaseTrainer):
             running_total_loss += total_loss.item()
 
         results = {
-            'total_loss': running_total_loss / len(self.obs_loader)
+            'total_loss': running_total_loss / len(self.obs_data_loader)
         }
 
-        avg_loss_terms = running_total_loss_terms / len(self.obs_loader)
+        avg_loss_terms = running_total_loss_terms / len(self.obs_data_loader)
 
         loss_term_names = ["Prediction", "Sparsity", "Structural"]
         for i, name in enumerate(loss_term_names):

@@ -5,7 +5,10 @@
     "learning_rate": 0.001,
     "optimizer_name": "name", // Any torch.optim.name
     "tensorboard_path": "tensorboard/", 
-    "checkpoint_path": "checkpoints/"
+    "checkpoint_path": "checkpoints/", 
+    "pred_loss_weight": 1.0, 
+    "edge_loss_weight": 1.0, 
+    "struct_loss_weight": 1.0
 
     // Optional
 }
