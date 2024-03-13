@@ -406,6 +406,22 @@ def test_oral_ceograph_egg_to_ex(gen_output_oral_ceograph,
     
     assert explainee_oral_ceograph(egg_formatted_to_ex).shape == (2, 2)
 
+
+    only_self_loops = gen_output_oral_ceograph
+    only_self_loops['adjacency_matrix'] = torch.zeros_like(
+        only_self_loops['adjacency_matrix']
+    )
+    diag = torch.arange(only_self_loops['adjacency_matrix'].shape[1])
+    only_self_loops['adjacency_matrix'][:, diag, diag] = 1.
+
+    only_self_loops_cleaned = oral_ceograph.egg_to_ex(only_self_loops)
+
+    assert contains_self_loops(only_self_loops_cleaned.edge_index) == False
+    assert contains_isolated_nodes(only_self_loops_cleaned.edge_index) == False
+    assert only_self_loops_cleaned.x.shape[0] == 0
+    assert only_self_loops_cleaned.edge_index.shape[1] == 0
+    assert only_self_loops_cleaned.edge_attr.shape[0] == 0
+
 def test_oral_ceograph_egg_to_egg(gen_output_oral_ceograph):
     gen_X, gen_A, gen_E = oral_ceograph.egg_to_egg(gen_output_oral_ceograph) 
 

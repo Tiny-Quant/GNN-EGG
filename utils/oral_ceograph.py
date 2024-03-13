@@ -395,8 +395,7 @@ def clean_gen_graph(gen: NucleiData) -> NucleiData:
     edge_index, edge_attr = remove_self_loops(edge_index, edge_attr)
 
     edge_index, edge_attr, mask = (
-        remove_isolated_nodes(edge_index, 
-                              edge_attr)
+        remove_isolated_nodes(edge_index, edge_attr, num_nodes=gen.x.shape[0])
     )
 
     gen_cleaned = NucleiData(
