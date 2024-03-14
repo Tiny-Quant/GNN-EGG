@@ -1,16 +1,19 @@
 import sys
+import os 
 
 import numpy as np 
-import torch_geometric
+import numexpr as ne
+import pandas as pd
+import torch_geometric as pyg
 import networkx as nx
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
-# import ceograph
+from utils.segmentation_functions import extract_patch_by_location
 
 def color_cell_graph(graph, seed=100):
-    network = torch_geometric.utils.to_networkx(graph)
+    network = pyg.utils.to_networkx(graph)
 
     cell_type_data = graph.cell_type.cpu().detach().numpy()
     edge_type_data = graph.edge_attr[:,0].cpu().detach().numpy()
@@ -27,7 +30,7 @@ def color_cell_graph(graph, seed=100):
 def masked_cell_graph(graph, node_mask, edge_mask, seed=100):
     norm = mpl.colors.Normalize(vmin=0, vmax=1)
     cmap = cm.RdBu
-    network = torch_geometric.utils.to_networkx(graph)
+    network = pyg.utils.to_networkx(graph)
 
     m = cm.ScalarMappable(norm=norm, cmap=cmap)
     node_mask = node_mask.cpu().numpy()
@@ -42,5 +45,52 @@ def masked_cell_graph(graph, node_mask, edge_mask, seed=100):
     nx.draw_networkx(network, pos = pos, with_labels=False, 
         node_color=mycolor2, node_size=25, edge_color=edge_color)
 
+def vis_cell_graph_and_slide(cell_summary_path: str, 
+                             slide_image_path: str, 
+                             graph_data_obj, 
+                             patch_size: int,
+                             color_palette):
+    """
+    """
 
-    
+    coords = [graph_data_obj.coord_x.item(), graph_data_obj.coord_y.item()]
+
+    cell_summary = pd.read_csv(cell_summary_path)   
+    cell_summary = cell_summary.loc[cell_summary['cell_type'] != 0, :]
+    coordinates_x = cell_summary['coordinate_x']
+    coordinates_y = cell_summary['coordinate_y']
+    coord_x_start = coords[0]
+    coord_x_end = coord_x_start + patch_size
+    coord_y_start = coords[1]
+    coord_y_end = coord_y_start + patch_size
+    expr = (
+        "(coordinates_x >= coord_x_start) & (coordinates_x <= coord_x_end) " + 
+        "& (coordinates_y >= coord_y_start) & (coordinates_y <= coord_y_end)"
+    )
+    patch_summary = cell_summary[ne.evaluate(expr)]
+
+    coordinate_x = patch_summary['coordinate_x'] - coords[0]
+    coordinate_y = patch_summary['coordinate_y'] - coords[1]
+
+    f = plt.figure(figsize=(8, 8))
+
+    if slide_image_path is not None: 
+        slide_file = os.path.join(slide_image_path)
+        image = extract_patch_by_location(slide_file, 
+                                        location=np.array(coords, dtype=int),
+                                        patch_size=(patch_size, patch_size))
+        image = np.array(image)[..., :3]
+
+        plt.imshow(image)
+
+    cell_colors = color_palette[patch_summary['cell_type'] - 1]
+
+    pos = {}
+    for i in range(patch_summary.shape[0]):
+        pos[i] = [coordinate_x.values[i], 
+                    coordinate_y.values[i]]
+
+    nx.draw(pyg.utils.to_networkx(graph_data_obj), pos=pos, 
+            with_labels=False, node_color=cell_colors, node_size=10)
+
+    plt.show()
