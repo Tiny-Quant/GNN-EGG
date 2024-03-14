@@ -96,7 +96,8 @@ if __name__ == '__main__':
     ############################################################################
     target = torch.tensor([1., 0.])
     uninfo_target = torch.tensor([0.5, 0.5])
-    avg_class_embedding = None
+    with open(PATH_TO_CLASS_EMBEDDINGS, 'rb') as f:
+        avg_class_embedding = pickle.load(f)
     
     ############################################################################
     ## Generator Parameters ####################################################
@@ -137,7 +138,8 @@ if __name__ == '__main__':
                     reinforce_struct=False,
                     sub_sampler="default", 
                     repeat_sampling=False, 
-                    batches_per_param=1,): 
+                    batches_per_param=1,
+                    auto_mixed_precision=False): 
             super().__init__(
                 model=model, explainee=explainee, 
                 target=target, uninfo_target=uninfo_target,
@@ -153,7 +155,8 @@ if __name__ == '__main__':
                 edge_budget=edge_budget, 
                 reinforce_pred=reinforce_pred,reinforce_struct=reinforce_struct, 
                 sub_sampler=sub_sampler, repeat_sampling=repeat_sampling,
-                batches_per_param=batches_per_param
+                batches_per_param=batches_per_param, 
+                auto_mixed_precision=auto_mixed_precision, 
             )
 
         def egg_to_ex(self, generated: dict):
@@ -198,15 +201,18 @@ if __name__ == '__main__':
     trainer = SpecificTrainer(
         model=generator, explainee=explainee, 
         target=target, uninfo_target=uninfo_target, 
+        avg_embed_targets=avg_class_embedding, 
         loss_term_weights=torch.tensor(
             [pred_loss_weight, edge_loss_weight, struct_loss_weight]
         ), 
         obs_data_list=obs_data_list, 
+        sub_sampler=sub_sampling_strat, 
         cont_node_indices=CONT_NODE_INDICES, 
         dis_node_indices=DIS_NODE_INDICES, 
         cont_edge_indices=CONT_EDGE_INDICES, 
         dis_edge_indices=DIS_EDGE_INDICES, 
         optimizer=optimizer, 
+        auto_mixed_precision=auto_mixed_precision, 
         tensorboard_path=tensorboard_path, checkpoint_path=checkpoint_path, 
     )
     
