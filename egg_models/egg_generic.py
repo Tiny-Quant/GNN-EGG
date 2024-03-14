@@ -298,7 +298,7 @@ class EggGenericTrainer(BaseTrainer):
         sub_sampler is expected to be a partial function where the only missing 
         parameter is a torch geometric data object. 
         """
-        if not hasattr(self, 'obs_data_loader') | self.repeat_sampling: 
+        if not hasattr(self, 'obs_data_loader') or self.repeat_sampling: 
 
             if self.sub_sampler is None: 
                 self.obs_data_loader = (
