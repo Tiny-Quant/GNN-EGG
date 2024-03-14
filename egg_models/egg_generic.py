@@ -189,7 +189,8 @@ class EggGenericTrainer(BaseTrainer):
                  reinforce_struct=False,
                  sub_sampler="default", 
                  repeat_sampling=False, 
-                 batches_per_param=1):
+                 batches_per_param=1, 
+                 auto_mixed_precision=False):
 
         super().__init__(model, optimizer, 
                          tensorboard_path, checkpoint_path, save_every)
@@ -218,6 +219,7 @@ class EggGenericTrainer(BaseTrainer):
         self.batches_per_param = batches_per_param
         self.sub_sampler = sub_sampler
         self.repeat_sampling = repeat_sampling
+        self.auto_mixed_precision = auto_mixed_precision
 
         # Create loss functions:  
         self.pred_loss_fn = PredLossBatched(self.target, self.explainee,
@@ -396,33 +398,38 @@ class EggGenericTrainer(BaseTrainer):
         running_total_loss_terms = torch.zeros_like(self.loss_term_weights)
 
         self.create_data_loader()
-        for i, obs_batch in enumerate(tqdm(self.obs_data_loader, 
-                                           desc="Observed Data", leave=False)): 
-            obs_batch.to(self.model.device_param.device)
+        with torch.autocast(device_type=self.model.device_param.device, 
+                            dtype=torch.float16, 
+                            enabled=self.auto_mixed_precision): 
+            for i, obs_batch in enumerate(tqdm(self.obs_data_loader, 
+                                            desc="Observed Data", leave=False)): 
+                obs_batch.to(self.model.device_param.device)
 
-            generated = self.model()
-            gen_ex_format = self.egg_to_ex(generated)
-            gen_egg_format = self.egg_to_egg(generated)
-            obs_egg_format = self.ex_to_egg(obs_batch)
+                generated = self.model()
+                gen_ex_format = self.egg_to_ex(generated)
+                gen_egg_format = self.egg_to_egg(generated)
+                obs_egg_format = self.ex_to_egg(obs_batch)
 
-            loss_terms = self.compute_loss_terms(generated, obs_batch, 
-                                                 gen_ex_format, 
-                                                 gen_egg_format,  
-                                                 obs_egg_format)
+                loss_terms = self.compute_loss_terms(generated, obs_batch, 
+                                                    gen_ex_format, 
+                                                    gen_egg_format,  
+                                                    obs_egg_format)
 
-            with torch.no_grad():
-                running_total_loss_terms += (
-                    loss_terms * self.loss_term_weights
-                )
+                with torch.no_grad():
+                    running_total_loss_terms += (
+                        loss_terms * self.loss_term_weights
+                    )
 
-            total_loss = loss_terms @ self.loss_term_weights
-            total_loss.backward()
+                total_loss = loss_terms @ self.loss_term_weights
+                self.scaler.scale(total_loss).backward()
 
-            if (i+1) % self.batches_per_param == 0:
-                self.optimizer.step()
-                self.optimizer.zero_grad()
+                if (i+1) % self.batches_per_param == 0:
+                    #self.optimizer.step()
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
+                    self.optimizer.zero_grad()
 
-            running_total_loss += total_loss.item()
+                running_total_loss += total_loss.item()
 
         results = {
             'total_loss': running_total_loss / len(self.obs_data_loader)

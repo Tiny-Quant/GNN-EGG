@@ -29,8 +29,9 @@ class BaseTrainer:
         self.tensorboard_path = tensorboard_path
         self.checkpoint_path = checkpoint_path
         self.save_every = save_every
-        print(self.tensorboard_path)
         self.writer = SummaryWriter(self.tensorboard_path)
+
+        self.scalar = torch.cuda.amp.GradScaler()
 
     @abstractmethod
     def train_one_epoch(self):
@@ -48,6 +49,7 @@ class BaseTrainer:
                 'epoch': epoch,
                 'model_state_dict': self.model.state_dict(),
                 'optimizer_state_dict': self.optimizer.state_dict(),
+                'scaler': self.scalar.state_dict(), 
             }
             checkpoint_filename = f'{self.checkpoint_path}/checkpoint_epoch_{epoch}.pt'
             torch.save(checkpoint, checkpoint_filename)
@@ -61,6 +63,9 @@ class BaseTrainer:
             )
             self.optimizer.load_state_dict(
                 last_checkpoint['optimizer_state_dict']
+            )
+            self.scalar.load_state_dict(
+                last_checkpoint['scalar']
             )
             start_epoch = last_checkpoint['epoch'] + 1
         else: 
@@ -76,13 +81,13 @@ class BaseTrainer:
                     # ref: https://github.com/pytorch/pytorch/issues/100253
                     experimental_config=torch._C._profiler._ExperimentalConfig(verbose=True)
                 ) as prof: 
-                    result = self.train_one_epoch()
+                    result = self.train_one_epoch(self.scalar)
                 with open(profile_dir + "/" + "profile.txt", "a+") as f:
                     print(prof.key_averages().table(sort_by="self_cuda_time_total"), 
                           file=f)
 
             else: 
-                result = self.train_one_epoch()
+                result = self.train_one_epoch(self.scalar)
 
             self.per_epoch_logger(result, epoch)
 
