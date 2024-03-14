@@ -47,7 +47,7 @@ def dict_cos_dist(dict1: Dict[str, torch.Tensor],
                   batch_indices2=None,  
                   act_pool_func: Callable=pyg.nn.global_mean_pool, 
                   expand2=True, 
-                  agg_func: Callable=torch.sum):
+                  agg_func: Callable=torch.mean):
     """
     Returns the aggregated cosine distance by batch between two dictionaries 
     of tensors on matching keys. 
