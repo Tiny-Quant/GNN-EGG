@@ -64,6 +64,8 @@ def dict_cos_dist(dict1: Dict[str, torch.Tensor],
         cos_sim = F.cosine_similarity(tensor1, tensor2, dim=1)
 
         agg_cos_dist.append(1 - cos_sim) # [B]
+
+    assert torch.all(agg_func(torch.stack(agg_cos_dist), dim=0) >= 0)
     
     return agg_func(torch.stack(agg_cos_dist), dim=0)
 
@@ -275,6 +277,8 @@ class GEDasMatchLoss(nn.Module):
 
         score = pygm.utils.compute_affinity_score(dis_match_mat, aff_mat)
 
+        assert torch.all(-1 * score >= 0)
+
         return -1 * score # Returns a positive upper bound of GED.  
 
 # %%
@@ -298,21 +302,19 @@ class StructuralLoss(nn.Module):
         self.criterion = criterion
         self.uninfo_pen = uninfo_pen
 
-
     def forward(self, 
                 gen_egg: List[torch.Tensor], obs_egg: List[torch.Tensor], 
                 obs_ex, 
                 gen_acts: Optional[Dict[str, torch.Tensor]]=None, 
                 gen_acts_batch: Optional[torch.Tensor]=None):
-
         approx_GED = self.GED_fn(*gen_egg, *obs_egg)
-
         if gen_acts is not None: 
-            activations, remove_hooks = (
-                activation_hook(self.explainee, gen_acts.keys())
-            ) 
-            explainee_pred = self.explainee(obs_ex)
-            remove_hooks()
+            with torch.no_grad():
+                activations, remove_hooks = (
+                    activation_hook(self.explainee, gen_acts.keys())
+                ) 
+                explainee_pred = self.explainee(obs_ex)
+                remove_hooks()
 
             embed_loss = dict_cos_dist(activations, gen_acts, 
                                        batch_indices1=obs_ex.batch, 
@@ -324,10 +326,14 @@ class StructuralLoss(nn.Module):
             embed_loss = torch.tensor(0.)
         
         try: 
-            omega = 1 / (self.gamma - self.criterion(
-                explainee_pred, 
-                self.target.expand_as(explainee_pred).to(explainee_pred.device)
-            ))
+            with torch.no_grad():
+                # TODO: Graph this function. 
+                omega = (self.gamma - 
+                    self.criterion(
+                        explainee_pred, 
+                        self.target.expand_as(explainee_pred).to(explainee_pred.device)
+                    )
+                )
         except ZeroDivisionError: 
             omega = self.uninfo_pen
 
