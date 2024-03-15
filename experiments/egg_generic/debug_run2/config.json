@@ -1,17 +1,17 @@
 {
-    "num_epochs": 5, 
+    "num_epochs": 10, 
     "optimizer_name": "Adam" , 
-    "learning_rate": 0.01, 
+    "learning_rate": 0.001, 
     "auto_mixed_precision": false, 
     "tensorboard_path": "experiments/egg_generic/debug_run2/tensorboard", 
     "checkpoint_path": "experiments/egg_generic/debug_run2/checkpoints", 
-    "PATH_TO_OBS_DATA": "data/slides/HN/HN_train_data_list.pkl", 
-    "PATH_TO_CLASS_EMBEDDINGS": "data/explainees/HN/HN_test_avg_embedding_dict_0.pkl", 
+    "target_class": 0, 
     "sub_sampling_strat": null, 
-    "batch_size": 2, 
-    "batches_per_param": 10,  
+    "batch_size": 4, 
+    "batches_per_param": 3,   
+    "MAX_NODE_SIZE": 25, 
     "temp": 0.5, 
     "pred_loss_weight": 10.0, 
-    "edge_loss_weight": 1e-2, 
-    "struct_loss_weight": 15.0
+    "edge_loss_weight": 5e-3, 
+    "struct_loss_weight": 1e-2
 }

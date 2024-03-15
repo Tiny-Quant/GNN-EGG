@@ -70,6 +70,7 @@ if __name__ == '__main__':
     ### Write any code necessary to load your observed data samples here. ######
     ############################################################################
     #PATH_TO_OBS_DATA = "" # Expects a dill/pickled list of data objects.
+    PATH_TO_OBS_DATA = "data/slides/HN/HN_train_data_list.pkl"
     with open(PATH_TO_OBS_DATA, 'rb') as f:
         obs_data_list = pickle.load(f)
 
@@ -94,15 +95,26 @@ if __name__ == '__main__':
     ### explainee model ie what values should be return when generated graphs ## 
     ### are passed to your model? ##############################################
     ############################################################################
-    target = torch.tensor([1., 0.])
     uninfo_target = torch.tensor([0.5, 0.5])
+
+    if target_class == 0: 
+        target = torch.tensor([1., 0.])
+        PATH_TO_CLASS_EMBEDDINGS = (
+            "data/explainees/HN/HN_test_avg_embedding_dict_0.pkl"
+        )
+    elif target_class == 1:
+        target = torch.tensor([0., 1.])
+        PATH_TO_CLASS_EMBEDDINGS = (
+            "data/explainees/HN/HN_test_avg_embedding_dict_1.pkl"
+        )
+
     with open(PATH_TO_CLASS_EMBEDDINGS, 'rb') as f:
         avg_class_embedding = pickle.load(f)
     
     ############################################################################
     ## Generator Parameters ####################################################
     ############################################################################
-    MAX_NODE_SIZE = 25 # Int. 
+    #MAX_NODE_SIZE = 25 # Int. 
     CONT_NODE_FEATS = 11 # Int. 
     DIS_NODE_FEATS = (4, ) # Tuple(cats, )
     CONT_EDGE_FEATS = 2 # Int.
