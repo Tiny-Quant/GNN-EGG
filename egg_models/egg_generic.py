@@ -349,9 +349,6 @@ class EggGenericTrainer(BaseTrainer):
 
             else: 
                 raise ValueError(f'{self.sub_sampler} is an invalid sub-sampler.')
-        
-        else: 
-            return self.obs_data_loader
 
     def compute_loss_terms(self, 
                            generated: dict, 
@@ -398,13 +395,13 @@ class EggGenericTrainer(BaseTrainer):
         running_total_loss_terms = torch.zeros_like(self.loss_term_weights)
 
         self.create_data_loader()
-        with torch.autocast(device_type=self.model.device_param.device, 
-                            dtype=torch.float16, 
-                            enabled=self.auto_mixed_precision): 
-            for i, obs_batch in enumerate(tqdm(self.obs_data_loader, 
-                                            desc="Observed Data", leave=False)): 
-                obs_batch.to(self.model.device_param.device)
+        for i, obs_batch in enumerate(tqdm(self.obs_data_loader, 
+                                        desc="Observed Data", leave=False)): 
+            obs_batch.to(self.model.device_param.device)
 
+            with torch.autocast(device_type=self.model.device_param.device.type, 
+                                dtype=torch.float16, 
+                                enabled=self.auto_mixed_precision): 
                 generated = self.model()
                 gen_ex_format = self.egg_to_ex(generated)
                 gen_egg_format = self.egg_to_egg(generated)
@@ -415,21 +412,32 @@ class EggGenericTrainer(BaseTrainer):
                                                     gen_egg_format,  
                                                     obs_egg_format)
 
+                if self.auto_mixed_precision:
+                    # Gradient accumulation scaling. 
+                    # Reference: https://pytorch.org/docs/stable/notes/amp_examples.html#gradient-accumulation. 
+                    loss_terms = loss_terms / self.batches_per_param
+
                 with torch.no_grad():
                     running_total_loss_terms += (
                         loss_terms * self.loss_term_weights
                     )
 
                 total_loss = loss_terms @ self.loss_term_weights
-                self.scaler.scale(total_loss).backward()
 
-                if (i+1) % self.batches_per_param == 0:
-                    #self.optimizer.step()
-                    self.scaler.step(self.optimizer)
-                    self.scaler.update()
-                    self.optimizer.zero_grad()
+            self.scaler.scale(total_loss).backward()
 
-                running_total_loss += total_loss.item()
+            if (i + 1) % self.batches_per_param == 0:
+
+                # Gradient clipping. 
+                # Reference: https://pytorch.org/tutorials/recipes/recipes/amp_recipe.html#advanced-topics
+                if self.auto_mixed_precision: 
+                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+
+                self.scaler.step(self.optimizer)
+                self.scaler.update()
+                self.optimizer.zero_grad()
+
+            running_total_loss += total_loss.item()
 
         results = {
             'total_loss': running_total_loss / len(self.obs_data_loader)
