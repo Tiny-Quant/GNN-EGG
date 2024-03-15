@@ -23,7 +23,7 @@ from egg_models.egg_generic import EggGeneric, EggGenericTrainer
 from utils import oral_ceograph
 
 # fix random seeds for reproducibility
-SEED = 123
+SEED = 123123
 torch.manual_seed(SEED)
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = True 
@@ -212,6 +212,7 @@ if __name__ == '__main__':
         cont_edge_indices=CONT_EDGE_INDICES, 
         dis_edge_indices=DIS_EDGE_INDICES, 
         optimizer=optimizer, 
+        batches_per_param=batches_per_param,
         auto_mixed_precision=auto_mixed_precision, 
         tensorboard_path=tensorboard_path, checkpoint_path=checkpoint_path, 
     )
