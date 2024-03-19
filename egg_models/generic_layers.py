@@ -24,12 +24,12 @@ class ContFeatMatrix(nn.Module):
         self.linear = nn.Linear(self.num_obs, 
             self.num_obs * self.num_feats)
 
-        # ensures Z will de created on the same device.
-        self.register_buffer('Z', torch.randn((self.batch_size, self.num_obs)))
-
     def forward(self):
-        X = self.linear(self.Z)
+        Z = torch.randn((self.batch_size, self.num_obs), 
+                         device=self.linear.weight.device)
+        X = self.linear(Z)
         X = X.view(self.batch_size, self.num_obs, self.num_feats)
+
         return X
 
 # %%
