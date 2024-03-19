@@ -249,7 +249,7 @@ class GEDasMatchLoss(nn.Module):
 
         return edit_aff
 
-    def forward(self, gen_X, gen_A, gen_E, obs_X, obs_A, obs_E,): 
+    def get_aff_mat(self, gen_X, gen_A, gen_E, obs_X, obs_A, obs_E,): 
         node_edit_aff_fn = partial(self.mixed_edit_aff_fn, 
                                    cont_indices = self.cont_node_indices, 
                                    dis_indices = self.dis_node_indices)
@@ -269,11 +269,23 @@ class GEDasMatchLoss(nn.Module):
             edge_aff_fn=edge_edit_aff_fn
         )
 
+        return aff_mat
+
+    def get_dis_match_mat(self, aff_mat):
+
         match_mat = pygm.rrwm(aff_mat, 
                               n1max=self.max_gen_nodes, 
                               n2max=aff_mat.shape[1] // self.max_gen_nodes)
 
         dis_match_mat = pygm.hungarian(match_mat)
+
+        return dis_match_mat
+
+    def forward(self, *args): 
+        
+        aff_mat = self.get_aff_mat(*args)
+
+        dis_match_mat = self.get_dis_match_mat(aff_mat)
 
         score = pygm.utils.compute_affinity_score(dis_match_mat, aff_mat)
 
