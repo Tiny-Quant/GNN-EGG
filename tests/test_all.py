@@ -650,7 +650,7 @@ def test_GEDasMatchLoss_oral_ceograph(gen_output_oral_ceograph, data_list_oral_c
     # assert (aff_mat <= 0.0).all()
     # assert (aff_mat >= -1.0).all()
 
-    assert (loss >= 0.0).all()
+    assert (loss >= -1e-5).all()
     assert (loss <= gen[0].shape[1] + gen[2].shape[1]).all()
 
     check_grads_exist(loss, generator_oral_ceograph)

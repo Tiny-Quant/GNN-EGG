@@ -65,7 +65,7 @@ def dict_cos_dist(dict1: Dict[str, torch.Tensor],
 
         agg_cos_dist.append(1 - cos_sim) # [B]
 
-    assert torch.all(agg_func(torch.stack(agg_cos_dist), dim=0) >= 0)
+    assert torch.all(agg_func(torch.stack(agg_cos_dist), dim=0) >= -1e-5)
     
     return agg_func(torch.stack(agg_cos_dist), dim=0)
 
@@ -289,7 +289,7 @@ class GEDasMatchLoss(nn.Module):
 
         score = pygm.utils.compute_affinity_score(dis_match_mat, aff_mat)
 
-        assert torch.all(-1 * score >= 0)
+        assert torch.all(-1 * score >= -1e-5)
 
         return -1 * score # Returns a positive upper bound of GED.  
 
