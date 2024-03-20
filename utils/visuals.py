@@ -69,11 +69,27 @@ def get_patch_positional_info(cell_summary_path: str,
 
     return [patch_summary, coordinate_x, coordinate_y]
 
+def get_node_pos(coordinate_x, coordinate_y):
+    pos = {}
+    for i in range(coordinate_x.shape[0]):
+        pos[i] = [coordinate_x.values[i], 
+                    coordinate_y.values[i]]
+    return pos
+
+def plot_slide_background(slide_image_path, patch_size, coords):
+    slide_file = os.path.join(slide_image_path)
+    image = extract_patch_by_location(slide_file, 
+                                    location=np.array(coords, dtype=int),
+                                    patch_size=(patch_size, patch_size))
+    image = np.array(image)[..., :3]
+
+    return image
+
 def vis_cell_graph_and_slide(cell_summary_path: str, 
                              slide_image_path: str, 
                              graph_data_obj, 
                              patch_size: int,
-                             color_palette):
+                             color_palette, ax=None):
     """
     """
     coords = [graph_data_obj.coord_x.item(), graph_data_obj.coord_y.item()]
@@ -85,13 +101,9 @@ def vis_cell_graph_and_slide(cell_summary_path: str,
     f = plt.figure(figsize=(8, 8))
 
     if slide_image_path is not None: 
-        slide_file = os.path.join(slide_image_path)
-        image = extract_patch_by_location(slide_file, 
-                                        location=np.array(coords, dtype=int),
-                                        patch_size=(patch_size, patch_size))
-        image = np.array(image)[..., :3]
-
-        plt.imshow(image)
+        image = plot_slide_background(slide_image_path, patch_size, coords)
+    else:
+        image = None
 
     cell_colors = color_palette[patch_summary['cell_type'] - 1]
 
@@ -100,7 +112,35 @@ def vis_cell_graph_and_slide(cell_summary_path: str,
         pos[i] = [coordinate_x.values[i], 
                     coordinate_y.values[i]]
 
-    nx.draw(pyg.utils.to_networkx(graph_data_obj), pos=pos, 
-            with_labels=False, node_color=cell_colors, node_size=10)
+    if ax is None: 
+        graph_plot = nx.draw(pyg.utils.to_networkx(graph_data_obj), pos=pos, 
+                             with_labels=False, 
+                             node_color=cell_colors, node_size=10)
+    else:
+        graph_plot = nx.draw(pyg.utils.to_networkx(graph_data_obj), pos=pos, 
+                             with_labels=False, 
+                             node_color=cell_colors, node_size=10, ax=ax)
 
-    plt.show()
+    return graph_plot, image
+
+def vis_connected_graph(
+        obs_graph_1,
+        cell_summary_path_1, 
+        slide_image_path_1, 
+        obs_graph_2,
+        cell_summary_path_2, 
+        slide_image_path_2, 
+        dis_match_mat1, 
+        dis_match_mat2, 
+    ):
+    """
+
+    """
+
+    fig, axes = plt.subplots(4, 1, figsize=(8, 32))
+
+
+
+    nx.draw(pyg.utils.to_networkx(obs_graph_1), )
+
+    return None
