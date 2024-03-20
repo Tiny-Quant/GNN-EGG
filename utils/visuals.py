@@ -45,15 +45,10 @@ def masked_cell_graph(graph, node_mask, edge_mask, seed=100):
     nx.draw_networkx(network, pos = pos, with_labels=False, 
         node_color=mycolor2, node_size=25, edge_color=edge_color)
 
-def vis_cell_graph_and_slide(cell_summary_path: str, 
-                             slide_image_path: str, 
-                             graph_data_obj, 
-                             patch_size: int,
-                             color_palette):
+def get_patch_positional_info(cell_summary_path: str, 
+                              patch_size: int, coords):
     """
     """
-
-    coords = [graph_data_obj.coord_x.item(), graph_data_obj.coord_y.item()]
 
     cell_summary = pd.read_csv(cell_summary_path)   
     cell_summary = cell_summary.loc[cell_summary['cell_type'] != 0, :]
@@ -71,6 +66,21 @@ def vis_cell_graph_and_slide(cell_summary_path: str,
 
     coordinate_x = patch_summary['coordinate_x'] - coords[0]
     coordinate_y = patch_summary['coordinate_y'] - coords[1]
+
+    return [patch_summary, coordinate_x, coordinate_y]
+
+def vis_cell_graph_and_slide(cell_summary_path: str, 
+                             slide_image_path: str, 
+                             graph_data_obj, 
+                             patch_size: int,
+                             color_palette):
+    """
+    """
+    coords = [graph_data_obj.coord_x.item(), graph_data_obj.coord_y.item()]
+
+    patch_summary, coordinate_x, coordinate_y = get_patch_positional_info(
+        cell_summary_path, patch_size, coords
+    )
 
     f = plt.figure(figsize=(8, 8))
 
