@@ -4,11 +4,13 @@ import os
 import numpy as np 
 import numexpr as ne
 import pandas as pd
+import torch 
 import torch_geometric as pyg
 import networkx as nx
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
+from matplotlib.patches import ConnectionPatch
 
 from utils.segmentation_functions import extract_patch_by_location
 
@@ -98,12 +100,9 @@ def vis_cell_graph_and_slide(cell_summary_path: str,
         cell_summary_path, patch_size, coords
     )
 
-    f = plt.figure(figsize=(8, 8))
-
     if slide_image_path is not None: 
         image = plot_slide_background(slide_image_path, patch_size, coords)
-    else:
-        image = None
+        ax.imshow(image)
 
     cell_colors = color_palette[patch_summary['cell_type'] - 1]
 
@@ -112,16 +111,11 @@ def vis_cell_graph_and_slide(cell_summary_path: str,
         pos[i] = [coordinate_x.values[i], 
                     coordinate_y.values[i]]
 
-    if ax is None: 
-        graph_plot = nx.draw(pyg.utils.to_networkx(graph_data_obj), pos=pos, 
-                             with_labels=False, 
-                             node_color=cell_colors, node_size=10)
-    else:
-        graph_plot = nx.draw(pyg.utils.to_networkx(graph_data_obj), pos=pos, 
-                             with_labels=False, 
-                             node_color=cell_colors, node_size=10, ax=ax)
+    nx.draw(pyg.utils.to_networkx(graph_data_obj), pos=pos, 
+            with_labels=False, node_color=cell_colors, node_size=10, 
+            ax=ax)
 
-    return graph_plot, image
+    return pos
 
 def vis_connected_graph(
         obs_graph_1,
@@ -130,17 +124,56 @@ def vis_connected_graph(
         obs_graph_2,
         cell_summary_path_2, 
         slide_image_path_2, 
-        dis_match_mat1, 
-        dis_match_mat2, 
+        gen_graph_1, 
+        dis_match_mat_1, 
+        gen_graph_2, 
+        dis_match_mat_2, 
+        patch_size,
+        color_palette, 
+        match_fn: callable, 
     ):
     """
 
     """
 
-    fig, axes = plt.subplots(4, 1, figsize=(8, 32))
+    # TODO: Is this robust to graphs with cleared nodes.
 
+    fig, axes = plt.subplots(4, 1, figsize=(8, 32), sharex=True, sharey=True)
 
+    pos_1 = vis_cell_graph_and_slide(
+        cell_summary_path_1, slide_image_path_1, obs_graph_1, 
+        patch_size, color_palette, axes[0], 
+    )
 
-    nx.draw(pyg.utils.to_networkx(obs_graph_1), )
+    pos_2 = {} 
+    for i in range(gen_graph_1.x.shape[0]):
+        j = torch.argmax(dis_match_mat_1.squeeze()[i]).item()
+        pos_2[i] = pos_1[j]
 
-    return None
+    nx.draw(
+        pyg.utils.to_networkx(gen_graph_1), 
+        pos=pos_2, ax=axes[1], node_size=10,  
+        node_color=color_palette[gen_graph_1.cell_type.numpy() - 1]
+    )
+
+    image = plot_slide_background(
+        slide_image_path_1, patch_size, 
+        coords = [obs_graph_1.coord_x.item(), 
+                  obs_graph_1.coord_y.item()]
+    )
+    axes[1].imshow(image)
+
+    for i in range(gen_graph_1.x.shape[0]):
+        j = torch.argmax(dis_match_mat_1.squeeze()[i]).item()
+        if match_fn(gen_graph_1, obs_graph_1, i, j): 
+            con = ConnectionPatch(xyA=pos_2[i], xyB=pos_1[j], 
+                                coordsA="data", coordsB="data",
+                                axesA=axes[0], axesB=axes[1], color="green")
+        else: 
+            con = ConnectionPatch(xyA=pos_2[i], xyB=pos_1[j], 
+                                coordsA="data", coordsB="data",
+                                axesA=axes[0], axesB=axes[1], color="red")
+
+        fig.add_artist(con)
+
+    return fig
