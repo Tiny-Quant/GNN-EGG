@@ -138,7 +138,7 @@ def vis_connected_graph(
 
     # TODO: Is this robust to graphs with cleared nodes.
 
-    fig, axes = plt.subplots(4, 1, figsize=(8, 32), sharex=True, sharey=True)
+    fig, axes = plt.subplots(1, 2, figsize=(32, 8), sharex=True, sharey=True)
 
     pos_1 = vis_cell_graph_and_slide(
         cell_summary_path_1, slide_image_path_1, obs_graph_1, 
