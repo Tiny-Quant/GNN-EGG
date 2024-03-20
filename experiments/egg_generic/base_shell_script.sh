@@ -40,10 +40,14 @@ module load cudnn
 
 # COMMAND GROUP 1
 cd
-cd /work/DPDS/s24833/Dissertation/gnn-egg/
+cd /work/DPDS/s224833/Dissertation/gnn-egg/
 
 source /cm/shared/apps/python/3.8.x-anaconda/etc/profile.d/conda.sh
 conda activate egg-env-38
+
+Log common points of failure.
+pwd 
+python --version
 
 python scripts/train_egg_generic_oral_ceograph.py --path_to_json_config experiments/egg_generic/class_0_run_1/config.json
 
