@@ -227,6 +227,7 @@ if __name__ == '__main__':
         batches_per_param=batches_per_param,
         auto_mixed_precision=auto_mixed_precision, 
         tensorboard_path=tensorboard_path, checkpoint_path=checkpoint_path, 
+        save_every=save_every
     )
     
     trainer.train(num_epochs, opt.resume_path, None)
