@@ -258,6 +258,24 @@ class GEDasMatchLoss(nn.Module):
                                    cont_indices = self.cont_edge_indices, 
                                    dis_indices = self.dis_edge_indices)
 
+        # Collect graph size information - avoids weird bugs.
+        self.n1 = (
+            torch.tensor([gen_X.shape[1]]).expand(gen_X.shape[0]).
+                to(gen_X.device)
+        )
+        self.ne1 = (
+            torch.tensor([gen_A.shape[2]]).expand(gen_A.shape[0]). 
+                to(gen_A.device)
+        )
+        self.n2 = (
+            torch.tensor([obs_X.shape[1]]).expand(obs_X.shape[0]). 
+                to(obs_X.device)
+        )
+        self.ne2 = (
+            torch.tensor([obs_A.shape[2]]).expand(obs_A.shape[0]). 
+                to(obs_A.device)
+        )
+    
         aff_mat = build_aff_mat(
             node_feat1=gen_X, 
             edge_feat1=gen_E, 
@@ -266,16 +284,18 @@ class GEDasMatchLoss(nn.Module):
             edge_feat2=obs_E, 
             connectivity2=obs_A.transpose(1, 2),  
             node_aff_fn=node_edit_aff_fn, 
-            edge_aff_fn=edge_edit_aff_fn
+            edge_aff_fn=edge_edit_aff_fn,
+            n1=self.n1, 
+            ne1=self.ne1, 
+            n2=self.n2, 
+            ne2=self.ne2
         )
 
         return aff_mat
 
     def get_dis_match_mat(self, aff_mat):
 
-        match_mat = pygm.rrwm(aff_mat, 
-                              n1max=self.max_gen_nodes, 
-                              n2max=aff_mat.shape[1] // self.max_gen_nodes)
+        match_mat = pygm.rrwm(aff_mat, n1=self.n1, n2=self.n2)
 
         dis_match_mat = pygm.hungarian(match_mat)
 
