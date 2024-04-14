@@ -45,7 +45,7 @@ cd /work/DPDS/s224833/Dissertation/gnn-egg/
 source /cm/shared/apps/python/3.8.x-anaconda/etc/profile.d/conda.sh
 conda activate egg-env-38
 
-Log common points of failure.
+# Log common points of failure.
 pwd 
 python --version
 
