@@ -289,8 +289,27 @@ class EggGenericTrainer(BaseTrainer):
         Default method for post-processing the generated output for comparison 
         with the transformed training data. 
         """
-        # TODO: Write default function
-        return None
+
+        gen_X = misc.concat_possible_none_tensors(
+                generated['cont_node_feats'], 
+                generated['dis_node_feats'], 
+                dim=-1
+        )
+
+        gen_A = generated['full_edge_indices']
+
+        gen_E = misc.concat_possible_none_tensors(
+                generated['cont_edge_feats'], 
+                generated['dis_edge_feats'], 
+                dim=-1
+        )
+
+        gen_E = misc.concat_possible_none_tensors(
+            gen_E, generated['edge_weights'], 
+            dim=-1
+        )
+
+        return [gen_X, gen_A, gen_E]
 
     def create_data_loader(self):
         """
