@@ -484,10 +484,11 @@ def egg_to_egg(generated: dict) -> List[torch.tensor]:
 
     gen_A = generated['full_edge_indices']
 
-    gen_E = torch.cat([
-    edge_types.to(gen_A.device), 
-    generated['cont_edge_feats'], 
-    generated['edge_weights']
-    ], dim=-1)
+    gen_E = torch.cat(
+        [edge_types.to(gen_A.device), 
+         generated['cont_edge_feats'], 
+         generated['edge_weights']
+        ], dim=-1
+    )
 
     return [gen_X, gen_A, gen_E]

@@ -231,18 +231,28 @@ class GEDasMatchLoss(nn.Module):
         #cont_start, cont_end = cont_indices
         #cont_feat1 = feat1[:, :, cont_start:cont_end] 
         #cont_feat2 = feat2[:, :, cont_start:cont_end]
-        cont_feat1 = misc.subset_tensor(feat1, cont_indices, dim=-1)
-        cont_feat2 = misc.subset_tensor(feat2, cont_indices, dim=-1)
+        # Set to zero if no features.
+        if cont_indices is not None:
+            cont_feat1 = misc.subset_tensor(feat1, cont_indices, dim=-1)
+            cont_feat2 = misc.subset_tensor(feat2, cont_indices, dim=-1)
 
-        cont_edit_aff = self.cont_edit_aff_fn(cont_feat1, cont_feat2)
+            cont_edit_aff = self.cont_edit_aff_fn(cont_feat1, cont_feat2)
+
+        else:
+            cont_edit_aff = 0
 
         #dis_start, dis_end = dis_indices
         #dis_feat1 = feat1[:, :, dis_start:dis_end]
         #dis_feat2 = feat2[:, :, dis_start:dis_end]
-        dis_feat1 = misc.subset_tensor(feat1, dis_indices, dim=-1)
-        dis_feat2 = misc.subset_tensor(feat2, dis_indices, dim=-1)
+        # Set to zero if no features.
+        if dis_indices is not None:
+            dis_feat1 = misc.subset_tensor(feat1, dis_indices, dim=-1)
+            dis_feat2 = misc.subset_tensor(feat2, dis_indices, dim=-1)
 
-        dis_edit_aff = self.dis_edit_aff_fn(dis_feat1, dis_feat2)
+            dis_edit_aff = self.dis_edit_aff_fn(dis_feat1, dis_feat2)
+
+        else:
+            dis_edit_aff = 0
 
         edit_aff = (self.cont_edit_weight * cont_edit_aff + 
                     self.dis_edit_weight * dis_edit_aff)
