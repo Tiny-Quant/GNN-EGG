@@ -396,7 +396,7 @@ class EggGenericTrainer(BaseTrainer):
                                           obs_batch, gen_act, gen_act_batch)
 
         if self.reinforce_struct:
-            struct_loss = pred_loss.mean() + (
+            struct_loss = struct_loss.mean() + (
                 ((1 / struct_loss) @ -generated['C_x_logLik']).sum() + 
                 ((1 / struct_loss) @ -generated['C_e_logLik']).sum() + 
                 ((1 / struct_loss) @ -generated['A_logLik']).sum()
