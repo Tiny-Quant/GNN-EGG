@@ -14,5 +14,5 @@
     "temp": 0.5, 
     "pred_loss_weight": 1e-1, 
     "edge_loss_weight": 1e-2, 
-    "struct_loss_weight": 0
+    "struct_loss_weight": 0.0
 }

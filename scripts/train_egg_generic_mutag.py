@@ -57,7 +57,7 @@ if __name__ == '__main__':
     with open(config_path) as f:
         config_data = json.load(f)
         
-    for key in config_data.keys():
+    for key in config_data:
         value = config_data.get(key)
         
         globals()[key] = value
@@ -65,10 +65,10 @@ if __name__ == '__main__':
     # Sets the torch device. #TODO: Make this more generic. 
     device = torch.device(0)
 
-    if reinforce_pred not in config_data.keys():
+    if "reinforce_pred" not in config_data:
         reinforce_pred = False
 
-    if reinforce_struct not in config_data.keys():
+    if "reinforce_struct" not in config_data:
         reinforce_struct = False
 
     ############################################################################

@@ -12,7 +12,7 @@
     "batches_per_param": 2,   
     "MAX_NODE_SIZE": 5, 
     "temp": 0.5, 
-    "pred_loss_weight": 0, 
-    "edge_loss_weight": 0, 
-    "struct_loss_weight": 1
+    "pred_loss_weight": 0.0, 
+    "edge_loss_weight": 0.0, 
+    "struct_loss_weight": 1.0
 }
