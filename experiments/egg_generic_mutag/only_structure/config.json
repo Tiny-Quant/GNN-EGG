@@ -6,7 +6,7 @@
     "tensorboard_path": "experiments/egg_generic_mutag/only_structure/tensorboard", 
     "checkpoint_path": "experiments/egg_generic_mutag/only_structure/checkpoints", 
     "save_every": 10, 
-    "target_class": 1, 
+    "target_class": 0, 
     "sub_sampling_strat": null, 
     "batch_size": 16, 
     "batches_per_param": 2,   
