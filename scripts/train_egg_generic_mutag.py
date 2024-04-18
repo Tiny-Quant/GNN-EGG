@@ -65,6 +65,12 @@ if __name__ == '__main__':
     # Sets the torch device. #TODO: Make this more generic. 
     device = torch.device(0)
 
+    if reinforce_pred is None: 
+        reinforce_pred = False
+
+    if reinforce_struct is None:
+        reinforce_struct = False
+
     ############################################################################
     ## Observed Data ###########################################################
     ### Write any code necessary to load your observed data samples here. ######
@@ -218,6 +224,8 @@ if __name__ == '__main__':
         dis_edge_indices=DIS_EDGE_INDICES, 
         optimizer=optimizer, 
         batches_per_param=batches_per_param,
+        reinforce_pred=reinforce_pred, 
+        reinforce_struct=reinforce_struct, 
         auto_mixed_precision=auto_mixed_precision, 
         tensorboard_path=tensorboard_path, checkpoint_path=checkpoint_path, 
         save_every=save_every
