@@ -11,6 +11,8 @@ from torch_geometric.utils import remove_isolated_nodes, remove_self_loops
 
 from pygmtools.utils import dense_to_sparse, build_batch
 
+from utils import misc
+
 class GCN(torch.nn.Module):
     def __init__(self, hidden_channels):
         super(GCN, self).__init__()
@@ -118,7 +120,32 @@ def ex_to_egg(obs_batch: pyg.data.Batch) -> List[torch.tensor]:
 
     return [build_batch(X_list), build_batch(A_list), build_batch(E_list)]
 
+def egg_to_egg(generated: dict) -> List[torch.tensor]:
+    """
+    Default method for post-processing the generated output for comparison 
+    with the transformed training data. 
+    """
 
+    gen_X = misc.concat_possible_none_tensors(
+            generated['cont_node_feats'], 
+            generated['dis_node_feats'], 
+            dim=-1
+    )
+
+    gen_A = generated['full_edge_indices']
+
+    gen_E = misc.concat_possible_none_tensors(
+            generated['cont_edge_feats'], 
+            generated['dis_edge_feats'], 
+            dim=-1
+    )
+
+    gen_E = misc.concat_possible_none_tensors(
+        gen_E, generated['edge_weights'], 
+        dim=-1
+    )
+
+    return [gen_X, gen_A, gen_E]
 
 
 
