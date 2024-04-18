@@ -342,21 +342,23 @@ class StructuralLoss(nn.Module):
         self.gamma = gamma
         self.target = target
         self.criterion = criterion
-        self.uninfo_pen = uninfo_pen
+        self.uninfo_pen = uninfo_pen # TODO: Remove argument. 
 
     def forward(self, 
                 gen_egg: List[torch.Tensor], obs_egg: List[torch.Tensor], 
                 obs_ex, 
                 gen_acts: Optional[Dict[str, torch.Tensor]]=None, 
                 gen_acts_batch: Optional[torch.Tensor]=None):
+
         approx_GED = self.GED_fn(*gen_egg, *obs_egg)
+
         if gen_acts is not None: 
-            with torch.no_grad():
-                activations, remove_hooks = (
-                    activation_hook(self.explainee, gen_acts.keys())
-                ) 
-                explainee_pred = self.explainee(obs_ex)
-                remove_hooks()
+            #with torch.no_grad():
+            activations, remove_hooks = (
+                activation_hook(self.explainee, gen_acts.keys())
+            ) 
+            explainee_pred = self.explainee(obs_ex)
+            remove_hooks()
 
             embed_loss = dict_cos_dist(activations, gen_acts, 
                                        batch_indices1=obs_ex.batch, 
@@ -364,20 +366,18 @@ class StructuralLoss(nn.Module):
                                        expand2=False)
 
         else: 
-            explainee_pred = self.explainee(obs_ex)
-            embed_loss = torch.tensor(0.)
-        
-        try: 
             with torch.no_grad():
-                # TODO: Graph this function. 
-                omega = (self.gamma - 
-                    self.criterion(
-                        explainee_pred, 
-                        self.target.expand_as(explainee_pred).to(explainee_pred.device)
-                    )
+                explainee_pred = self.explainee(obs_ex)
+                embed_loss = torch.tensor(0.)
+        
+        with torch.no_grad():
+            omega = (self.gamma - 
+                self.criterion(
+                    explainee_pred, 
+                    self.target.expand_as(explainee_pred).
+                        to(explainee_pred.device)
                 )
-        except ZeroDivisionError: 
-            omega = self.uninfo_pen
+            ) ** 3
 
         return omega * (approx_GED + embed_loss)
         
