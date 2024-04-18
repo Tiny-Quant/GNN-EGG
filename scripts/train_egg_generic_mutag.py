@@ -65,10 +65,10 @@ if __name__ == '__main__':
     # Sets the torch device. #TODO: Make this more generic. 
     device = torch.device(0)
 
-    if reinforce_pred is None: 
+    if reinforce_pred not in config_data.keys():
         reinforce_pred = False
 
-    if reinforce_struct is None:
+    if reinforce_struct not in config_data.keys():
         reinforce_struct = False
 
     ############################################################################
