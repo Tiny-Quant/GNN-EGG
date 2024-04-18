@@ -24,7 +24,7 @@ def activation_hook(model: nn.Module,
     activations = {}
 
     def hook(module, input, output, name):
-        activations[name] = output.detach()
+        activations[name] = output #.detach()
 
     hooks = []
     for name, module in model.named_modules():
