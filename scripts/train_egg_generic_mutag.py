@@ -65,11 +65,15 @@ if __name__ == '__main__':
     # Sets the torch device. #TODO: Make this more generic. 
     device = torch.device(0)
 
+    # Set unspecificed config parameters to default values. 
     if "reinforce_pred" not in config_data:
         reinforce_pred = False
 
     if "reinforce_struct" not in config_data:
         reinforce_struct = False
+
+    if "grad_norm" not in config_data:
+        grad_norm = None
 
     ############################################################################
     ## Observed Data ###########################################################
@@ -156,6 +160,7 @@ if __name__ == '__main__':
                     sub_sampler="default", 
                     repeat_sampling=False, 
                     batches_per_param=1,
+                    grad_norm=None, 
                     auto_mixed_precision=False): 
             super().__init__(
                 model=model, explainee=explainee, 
@@ -173,6 +178,7 @@ if __name__ == '__main__':
                 reinforce_pred=reinforce_pred,reinforce_struct=reinforce_struct, 
                 sub_sampler=sub_sampler, repeat_sampling=repeat_sampling,
                 batches_per_param=batches_per_param, 
+                grad_norm=grad_norm, 
                 auto_mixed_precision=auto_mixed_precision, 
             )
 

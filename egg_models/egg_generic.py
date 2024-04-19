@@ -190,6 +190,7 @@ class EggGenericTrainer(BaseTrainer):
                  sub_sampler="default", 
                  repeat_sampling=False, 
                  batches_per_param=1, 
+                 grad_norm: Optional[float]=None, 
                  auto_mixed_precision=False):
 
         super().__init__(model, optimizer, 
@@ -219,6 +220,7 @@ class EggGenericTrainer(BaseTrainer):
         self.batches_per_param = batches_per_param
         self.sub_sampler = sub_sampler
         self.repeat_sampling = repeat_sampling
+        self.grad_norm = grad_norm
         self.auto_mixed_precision = auto_mixed_precision
 
         # Create loss functions:  
@@ -451,6 +453,11 @@ class EggGenericTrainer(BaseTrainer):
                 # Reference: https://pytorch.org/tutorials/recipes/recipes/amp_recipe.html#advanced-topics
                 if self.auto_mixed_precision: 
                     torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+
+                if self.grad_norm is not None:
+                    torch.nn.utils.clip_grad_norm_(
+                        self.model.parameters(), self.grad_norm
+                    )
 
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
