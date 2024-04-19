@@ -53,8 +53,14 @@ def clean_gen_graph(gen: pyg.data.Data) -> pyg.data.Data:
         remove_isolated_nodes(edge_index, edge_attr, num_nodes=gen.x.shape[0])
     )
 
+    # Zero node features if all cleared. 
+    if gen.x[mask].shape[0] == 0:
+        x = gen.x * 0.0
+    else: 
+        x = gen.x[mask]
+
     gen_cleaned = pyg.data.Data(
-        x = gen.x[mask], 
+        x = x, 
         edge_index = edge_index, 
         edge_attr = edge_attr,
     )

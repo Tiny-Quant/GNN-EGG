@@ -398,10 +398,19 @@ def clean_gen_graph(gen: NucleiData) -> NucleiData:
         remove_isolated_nodes(edge_index, edge_attr, num_nodes=gen.x.shape[0])
     )
 
+    # Uninformative values for when all nodes get cleared. 
+    # Needed to maintain mini-batch information. 
+    if gen.x[mask].shape[0] == 0:
+        x = gen.x * 0.0
+        cell_types = torch.ones_like(gen.cell_type) * gen.cell_type.mode().values
+    else: 
+        x = gen.x[mask]
+        cell_types = gen.cell_type[mask]
+
     gen_cleaned = NucleiData(
-        x = gen.x[mask], 
+        x = x, 
         edge_index = edge_index, 
-        cell_type = gen.cell_type[mask], 
+        cell_type = cell_types,
         edge_attr = edge_attr,
     )
 

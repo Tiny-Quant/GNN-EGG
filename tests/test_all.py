@@ -92,6 +92,30 @@ def generator_oral_ceograph(device):
     return mock_generator
 
 @pytest.fixture
+def generator_oral_ceograph_no_nodes(device):
+    """
+    Create test case oral ceograph for an EggGeneric generator model in the 
+    case where all nodes get cleared.  
+    """
+    mock_generator = egg_generic.EggGeneric(
+        max_node_size=10, 
+        cont_node_feats=11, 
+        cont_edge_feats=2, 
+        dis_node_feats=(4,), 
+        # dis_edge_feats=(1, 2), 
+        batch_size=2,
+        allow_self_loops=False
+    )
+
+    mock_generator.AdjacencyMatrix.probs = torch.nn.Parameter(
+        torch.zeros_like(mock_generator.AdjacencyMatrix.probs)
+    )
+
+    mock_generator.to(device)
+
+    return mock_generator
+
+@pytest.fixture
 def gen_output(generator):
     """
     Output test case I for an EggGeneric generator model. 
@@ -111,6 +135,14 @@ def gen_output_oral_ceograph(generator_oral_ceograph):
     Output test case oral ceograph an EggGeneric generator model. 
     """
     return generator_oral_ceograph()
+
+@pytest.fixture
+def gen_output_oral_ceograph_no_nodes(generator_oral_ceograph_no_nodes):
+    """
+    Output test case oral ceograph an EggGeneric generator model for the case
+    where all nodes get cleared. 
+    """
+    return generator_oral_ceograph_no_nodes()
 
 @pytest.fixture
 def explainee2(): 
@@ -418,7 +450,7 @@ def test_oral_ceograph_egg_to_ex(gen_output_oral_ceograph,
 
     assert contains_self_loops(only_self_loops_cleaned.edge_index) == False
     assert contains_isolated_nodes(only_self_loops_cleaned.edge_index) == False
-    assert only_self_loops_cleaned.x.shape[0] == 0
+    assert only_self_loops_cleaned.x.sum() == 0
     assert only_self_loops_cleaned.edge_index.shape[1] == 0
     assert only_self_loops_cleaned.edge_attr.shape[0] == 0
 
@@ -593,6 +625,27 @@ def test_PredLossBatched_oral_ceograph(target_oral_ceograph,
 
     check_at_least_1_grad(loss, generator_oral_ceograph)
 
+def test_PredLossBatched_oral_ceograph_no_nodes(target_oral_ceograph, 
+                                       explainee_oral_ceograph, 
+                                       avg_embed_targets_oral_ceograph, 
+                                       generator_oral_ceograph_no_nodes, 
+                                       gen_output_oral_ceograph_no_nodes):
+    """
+    Test the output shape and gradients for the oral ceograph test case. 
+    """
+    loss_func = egg_generic_losses.PredLossBatched(
+        target=target_oral_ceograph, explainee=explainee_oral_ceograph, 
+        avg_embed_targets=avg_embed_targets_oral_ceograph
+    )
+    egg_formatted_to_ex = oral_ceograph.egg_to_ex(gen_output_oral_ceograph_no_nodes)
+
+    loss, activations, batch_indices = loss_func(egg_formatted_to_ex)
+    assert loss.shape == (2,) 
+    assert activations is not None
+    assert batch_indices is not None
+
+    check_at_least_1_grad(loss, generator_oral_ceograph_no_nodes)
+
 def test_Edge_Penalty(generator, generator2, generator_oral_ceograph): 
     """
     Test that the EdgePenalty function returns and scalar and can produce a 
@@ -702,3 +755,51 @@ def test_StructuralLoss_oral_ceograph(explainee_oral_ceograph,
     assert loss.shape == (2, )
 
     check_grads_exist(loss, generator_oral_ceograph)
+
+def test_StructuralLoss_oral_ceograph_no_nodes(explainee_oral_ceograph, 
+                                      gamma_oral_ceograph, 
+                                      target_oral_ceograph, 
+                                      gen_output_oral_ceograph_no_nodes, 
+                                      data_list_oral_ceograph,
+                                      generator_oral_ceograph_no_nodes, 
+                                      avg_embed_targets_oral_ceograph, 
+                                      device): 
+    """
+    Tests that the structural loss that integrates GED, prediction, and 
+    embedding losses returns the correct shape and creates all gradients.  
+    """
+    GED_fn = egg_generic_losses.GEDasMatchLoss(
+        node_size=10, 
+        cont_node_indices=(slice(0, 11), ), 
+        dis_node_indices=(slice(11, 16), ),
+        cont_edge_indices=(slice(1, 3), ), 
+        dis_edge_indices=(3, ), 
+    )
+
+    loss_fn = egg_generic_losses.StructuralLoss(
+        GED_fn, explainee_oral_ceograph, 
+        gamma_oral_ceograph, target_oral_ceograph
+    )
+
+    pred_loss = egg_generic_losses.PredLossBatched(
+        target=target_oral_ceograph, explainee=explainee_oral_ceograph, 
+        avg_embed_targets=avg_embed_targets_oral_ceograph
+    )
+
+    gen_ex = oral_ceograph.egg_to_ex(gen_output_oral_ceograph_no_nodes)
+
+    gen_egg = oral_ceograph.egg_to_egg(gen_output_oral_ceograph_no_nodes)
+
+    obs_ex = Batch.from_data_list(data_list_oral_ceograph).to(device)
+
+    obs_egg = oral_ceograph.ex_to_egg(obs_ex, 4)
+
+    _, activations, batch_indices = pred_loss(gen_ex)
+
+    loss = loss_fn(gen_egg, obs_egg, obs_ex, 
+                   gen_acts=activations, 
+                   gen_acts_batch=batch_indices)
+
+    assert loss.shape == (2, )
+
+    check_grads_exist(loss, generator_oral_ceograph_no_nodes)
