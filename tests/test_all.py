@@ -542,24 +542,24 @@ def test_create_dataloader_oral_ceograph(EggGenericTrainer_oral_ceograph,
     [
         ({"layer_1": torch.ones((2, 10)), "layer_2": torch.zeros((2, 25))}, 
          {"layer_1": -1 * torch.ones((2, 10)), "layer_2": torch.ones((2, 25))}, 
-         lambda x, batch: x, torch.mean, torch.tensor([1.5, 1.5])), 
+         lambda x, batch, size: x, torch.mean, torch.tensor([1.5, 1.5])), 
         ({"layer_1": torch.ones((2, 10)), "layer_2": torch.zeros((2, 25))}, 
          {"layer_1": -1 * torch.ones((2, 10)), "layer_2": torch.ones((2, 25))}, 
-         lambda x, batch: x, torch.sum, torch.tensor([3., 3.])), 
+         lambda x, batch, size: x, torch.sum, torch.tensor([3., 3.])), 
         ({"layer_1": torch.ones((2, 10)), "layer_2": torch.zeros((2, 25))}, 
          {"layer_1": -1 * torch.ones((1, 10)), "layer_2": torch.ones((1, 25))}, 
-         lambda x, batch: x, torch.mean, torch.tensor([1.5, 1.5])), 
+         lambda x, batch, size: x, torch.mean, torch.tensor([1.5, 1.5])), 
         ({"layer_1": torch.ones((2, 10)), "layer_2": torch.zeros((2, 25))}, 
          {"layer_1": -1 * torch.ones((1, 10)), "layer_2": torch.ones((1, 25))}, 
-         lambda x, batch: x, torch.sum, torch.tensor([3., 3.])), 
+         lambda x, batch, size: x, torch.sum, torch.tensor([3., 3.])), 
         ({"layer_1": torch.cat([torch.ones((1, 10)), torch.zeros((1, 10))]), 
           "layer_2": torch.cat([-1 * torch.ones((1, 25)), torch.ones((1, 25))])}, 
          {"layer_1": -1 * torch.ones((1, 10)), "layer_2": torch.ones((1, 25))}, 
-         lambda x, batch: x, torch.sum, torch.tensor([4., 1.])), 
+         lambda x, batch, size: x, torch.sum, torch.tensor([4., 1.])), 
         ({"layer_1": torch.cat([torch.ones((1, 10)), torch.zeros((1, 10))]), 
           "layer_2": torch.cat([-1 * torch.ones((1, 25)), torch.ones((1, 25))])}, 
          {"layer_1": -1 * torch.ones((1, 10)), "layer_2": torch.ones((1, 25))}, 
-         lambda x, batch: x, torch.mean, torch.tensor([2., 0.5]))
+         lambda x, batch, size: x, torch.mean, torch.tensor([2., 0.5]))
     ]
 )
 def test_dict_cos_dist(dict1, dict2, act_pool_func, agg_func, expected):

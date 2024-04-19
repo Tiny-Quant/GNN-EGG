@@ -47,7 +47,8 @@ def dict_cos_dist(dict1: Dict[str, torch.Tensor],
                   batch_indices2=None,  
                   act_pool_func: Callable=pyg.nn.global_mean_pool, 
                   expand2=True, 
-                  agg_func: Callable=torch.mean):
+                  agg_func: Callable=torch.mean, 
+                  batch_size=None):
     """
     Returns the aggregated cosine distance by batch between two dictionaries 
     of tensors on matching keys. 
@@ -55,11 +56,13 @@ def dict_cos_dist(dict1: Dict[str, torch.Tensor],
     """
     agg_cos_dist = []
     for key in set(dict1.keys()) & set(dict2.keys()): 
-        tensor1 = act_pool_func(dict1[key], batch=batch_indices1)
+        tensor1 = act_pool_func(dict1[key], 
+                                batch=batch_indices1, size=batch_size)
         if expand2: 
             tensor2 = dict2[key].expand_as(tensor1).to(tensor1.device)
         else: 
-            tensor2 = act_pool_func(dict2[key], batch=batch_indices2)
+            tensor2 = act_pool_func(dict2[key], 
+                                    batch=batch_indices2, size=batch_size)
 
         cos_sim = F.cosine_similarity(tensor1, tensor2, dim=1)
 
@@ -360,10 +363,13 @@ class StructuralLoss(nn.Module):
             explainee_pred = self.explainee(obs_ex)
             remove_hooks()
 
+            # TODO: Look into auto batch_size calc problems in pyg pooling.
+            batch_size = gen_egg[0].shape[0]
             embed_loss = dict_cos_dist(activations, gen_acts, 
                                        batch_indices1=obs_ex.batch, 
                                        batch_indices2=gen_acts_batch, 
-                                       expand2=False)
+                                       expand2=False, 
+                                       batch_size=batch_size)
 
         else: 
             with torch.no_grad():
