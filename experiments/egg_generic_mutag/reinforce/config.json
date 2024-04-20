@@ -1,7 +1,7 @@
 {
     "num_epochs": 100, 
-    "optimizer_name": "Adam" , 
-    "learning_rate": 0.0001, 
+    "optimizer_name": "RMSprop" , 
+    "learning_rate": 0.01, 
     "auto_mixed_precision": false, 
     "tensorboard_path": "experiments/egg_generic_mutag/reinforce/tensorboard", 
     "checkpoint_path": "experiments/egg_generic_mutag/reinforce/checkpoints", 
@@ -12,8 +12,9 @@
     "batches_per_param": 2,   
     "MAX_NODE_SIZE": 5, 
     "temp": 0.5, 
-    "pred_loss_weight": 0.0, 
+    "pred_loss_weight": 1.0, 
     "edge_loss_weight": 0.0, 
     "struct_loss_weight": 1.0, 
-    "reinforce_struct": true 
+    "reinforce_struct": true, 
+    "reinforce_pred": true
 }
