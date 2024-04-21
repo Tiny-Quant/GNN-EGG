@@ -74,6 +74,9 @@ if __name__ == '__main__':
 
     if "grad_norm" not in config_data:
         grad_norm = None
+    
+    if "use_embeddings" not in config_data:
+        use_embeddings=True
 
     ############################################################################
     ## Observed Data ###########################################################
@@ -161,6 +164,7 @@ if __name__ == '__main__':
                     repeat_sampling=False, 
                     batches_per_param=1,
                     grad_norm=None, 
+                    use_embeddings=True, 
                     auto_mixed_precision=False): 
             super().__init__(
                 model=model, explainee=explainee, 
@@ -179,6 +183,7 @@ if __name__ == '__main__':
                 sub_sampler=sub_sampler, repeat_sampling=repeat_sampling,
                 batches_per_param=batches_per_param, 
                 grad_norm=grad_norm, 
+                use_embeddings=use_embeddings, 
                 auto_mixed_precision=auto_mixed_precision, 
             )
 
@@ -232,6 +237,8 @@ if __name__ == '__main__':
         batches_per_param=batches_per_param,
         reinforce_pred=reinforce_pred, 
         reinforce_struct=reinforce_struct, 
+        grad_norm=grad_norm, 
+        use_embeddings=use_embeddings, 
         auto_mixed_precision=auto_mixed_precision, 
         tensorboard_path=tensorboard_path, checkpoint_path=checkpoint_path, 
         save_every=save_every
