@@ -191,6 +191,7 @@ class EggGenericTrainer(BaseTrainer):
                  repeat_sampling=False, 
                  batches_per_param=1, 
                  grad_norm: Optional[float]=None, 
+                 use_embeddings=True, 
                  auto_mixed_precision=False):
 
         super().__init__(model, optimizer, 
@@ -239,7 +240,8 @@ class EggGenericTrainer(BaseTrainer):
                                      dis_edge_indices)
 
         self.struct_loss_fn = StructuralLoss(self.GED_fn, self.explainee, 
-                                             self.gamma, self.target)
+                                             self.gamma, self.target, 
+                                             use_embeddings=use_embeddings)
 
     def egg_to_ex(self, generated: dict) -> Batch: 
         """

@@ -94,7 +94,7 @@ class PredLossBatched(nn.Module):
             activations, remove_hooks = (
                 activation_hook(self.explainee, self.avg_embed_targets.keys())
             ) 
-            explainee_pred = self.explainee(batch)
+            explainee_pred = F.softmax(self.explainee(batch), dim=-1)
 
             loss = self.criterion(explainee_pred, 
                                   (self.target.expand_as(explainee_pred).
@@ -109,7 +109,7 @@ class PredLossBatched(nn.Module):
             return loss, activations, batch.batch
 
         else: 
-            explainee_pred = self.explainee(batch)
+            explainee_pred = F.softmax(self.explainee(batch), dim=-1)
             loss = self.criterion(explainee_pred, 
                                   self.target.expand_as(explainee_pred).
                                   to(explainee_pred.device)
@@ -337,6 +337,7 @@ class StructuralLoss(nn.Module):
                  gamma: torch.Tensor, 
                  target: torch.Tensor, 
                  criterion = nn.CrossEntropyLoss(reduction='none'), 
+                 use_embeddings=True, 
                  uninfo_pen=-1): 
         super(StructuralLoss, self).__init__()
 
@@ -345,6 +346,7 @@ class StructuralLoss(nn.Module):
         self.gamma = gamma
         self.target = target
         self.criterion = criterion
+        self.use_embeddings = use_embeddings
         self.uninfo_pen = uninfo_pen # TODO: Remove argument. 
 
     def forward(self, 
@@ -355,12 +357,12 @@ class StructuralLoss(nn.Module):
 
         approx_GED = self.GED_fn(*gen_egg, *obs_egg)
 
-        if gen_acts is not None: 
+        if gen_acts is not None and self.use_embeddings: 
             #with torch.no_grad():
             activations, remove_hooks = (
                 activation_hook(self.explainee, gen_acts.keys())
             ) 
-            explainee_pred = self.explainee(obs_ex)
+            explainee_pred = F.softmax(self.explainee(obs_ex), dim=-1)
             remove_hooks()
 
             # TODO: Look into auto batch_size calc problems in pyg pooling.
@@ -373,7 +375,7 @@ class StructuralLoss(nn.Module):
 
         else: 
             with torch.no_grad():
-                explainee_pred = self.explainee(obs_ex)
+                explainee_pred = F.softmax(self.explainee(obs_ex), dim=-1)
                 embed_loss = torch.tensor(0.)
         
         with torch.no_grad():
