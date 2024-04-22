@@ -1,0 +1,20 @@
+{
+    "num_epochs": 300, 
+    "optimizer_name": "RMSprop" , 
+    "learning_rate": 0.01, 
+    "auto_mixed_precision": false, 
+    "tensorboard_path": "experiments/egg_generic_mutag/class_0_run_3d/tensorboard", 
+    "checkpoint_path": "experiments/egg_generic_mutag/class_0_run_3d/checkpoints", 
+    "save_every": 10, 
+    "target_class": 0, 
+    "sub_sampling_strat": null, 
+    "batch_size": 16, 
+    "batches_per_param": 2,   
+    "MAX_NODE_SIZE": 5, 
+    "temp": 0.5, 
+    "pred_loss_weight": 0.0, 
+    "edge_loss_weight": 0.0, 
+    "struct_loss_weight": 1.0,
+    "reinforce_struct": true, 
+    "use_embeddings": false
+}
