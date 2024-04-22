@@ -1,2 +1,9 @@
 Clean/
-Archive/
+archive/
+egg_1/
+experiments/
+manuscript/
+results/
+tests/
+utils/
+
