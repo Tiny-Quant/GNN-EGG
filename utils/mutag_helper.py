@@ -1,6 +1,7 @@
 from typing import List
 
 import torch 
+import torch.nn as nn
 from torch.nn import Linear
 import torch.nn.functional as F
 
@@ -13,9 +14,9 @@ from pygmtools.utils import dense_to_sparse, build_batch
 
 from utils import misc
 
-class GCN(torch.nn.Module):
+class GCN1(torch.nn.Module):
     def __init__(self, hidden_channels):
-        super(GCN, self).__init__()
+        super().__init__()
         torch.manual_seed(12345)
         self.conv1 = GCNConv(7, hidden_channels)
         self.conv2 = GCNConv(hidden_channels, hidden_channels)
@@ -39,6 +40,35 @@ class GCN(torch.nn.Module):
         x = self.lin(x)
         
         return x
+
+class GCN2(torch.nn.Module):
+    def __init__(self, hidden_channels, node_features, num_classes, 
+                 num_layers=3, dropout=0):
+        super().__init__()
+        self.conv = pyg.nn.GCN(in_channels=node_features,
+                               hidden_channels=hidden_channels,
+                               num_layers=num_layers,
+                               act=nn.LeakyReLU(inplace=True),
+                               dropout=dropout)
+        self.drop = nn.Dropout(p=dropout)
+        self.lin = pyg.nn.Linear(hidden_channels*2, hidden_channels)
+        self.out = pyg.nn.Linear(hidden_channels, num_classes)
+
+    def forward(self, batch):
+
+        h = self.conv(batch.x, batch.edge_index)
+
+        embeds = torch.cat([
+            pyg.nn.global_add_pool(h, batch=batch.batch),
+            pyg.nn.global_mean_pool(h, batch=batch.batch),
+        ], dim=1)
+
+        h = self.drop(embeds)
+        h = self.lin(h)
+        h = h.relu()
+        h = self.out(h)
+
+        return h
 
 def clean_gen_graph(gen: pyg.data.Data) -> pyg.data.Data: 
     """
