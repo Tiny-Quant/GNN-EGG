@@ -207,8 +207,11 @@ class GEDasMatchLoss(nn.Module):
         return: [b, n1, n2]
         """
 
+        feat1_norm = F.normalize(feat1, p=2, dim=-1)
+        feat2_norm = F.normalize(feat2, p=2, dim=-1)
+
         cos_sim_mat = torch.einsum('bij, bkj -> bik', 
-                                   feat1, feat2)
+                                   feat1_norm, feat2_norm)
 
         # tol = 1e-5
         # assert (-1 * (1 - cos_sim_mat) >= -1. - tol).all()
@@ -322,7 +325,7 @@ class GEDasMatchLoss(nn.Module):
 
         score = pygm.utils.compute_affinity_score(dis_match_mat, aff_mat)
 
-        assert torch.all(-1 * score >= -1e-5)
+        assert torch.all(-1 * score >= -1e-5) # TODO: Check deletion cost. 
 
         return -1 * score # Returns a positive upper bound of GED.  
 
