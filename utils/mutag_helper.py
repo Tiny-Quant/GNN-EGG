@@ -127,15 +127,15 @@ def edge_relaxer(graph: pyg.data.Data) -> pyg.data.Data:
     the original edge indices to edge weights in the edge feature matrix. 
     """
 
-    edge_index = pyg.utils.to_dense_adj(graph.edge_index) + 1e-8
+    edge_index = pyg.utils.to_dense_adj(graph.edge_index)
     edge_index, edge_weights, _ = dense_to_sparse(edge_index)
     edge_index = edge_index.transpose(1, 2).squeeze(0)
 
     edge_attr = graph.edge_attr
-    zero_pad = torch.zeros((edge_index.shape[1] - edge_attr.shape[0], 
-                            edge_attr.shape[1])).to(edge_attr.device)
-    edge_attr = torch.cat((edge_attr, zero_pad), dim=0)
-    edge_attr = torch.cat((edge_attr, edge_weights.squeeze(0) - 1e-8), dim=-1)
+    # zero_pad = torch.zeros((edge_index.shape[1] - edge_attr.shape[0], 
+    #                         edge_attr.shape[1])).to(edge_attr.device)
+    # edge_attr = torch.cat((edge_attr, zero_pad), dim=0)
+    edge_attr = torch.cat((edge_attr, edge_weights.squeeze(0)), dim=-1)
 
     graph.edge_index = edge_index
     graph.edge_attr = edge_attr
