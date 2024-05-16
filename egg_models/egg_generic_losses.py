@@ -340,7 +340,7 @@ class StructuralLoss(nn.Module):
                  gamma: torch.Tensor, 
                  target: torch.Tensor, 
                  criterion = nn.CrossEntropyLoss(reduction='none'), 
-                 use_embeddings=True, 
+                 use_embeddings=False, 
                  uninfo_pen=-1): 
         super(StructuralLoss, self).__init__()
 
@@ -382,13 +382,19 @@ class StructuralLoss(nn.Module):
                 embed_loss = torch.tensor(0.)
         
         with torch.no_grad():
-            omega = (self.gamma - 
-                self.criterion(
-                    explainee_pred, 
-                    self.target.expand_as(explainee_pred).
-                        to(explainee_pred.device)
-                )
-            ) ** 3
+            omega = (explainee_pred @ 
+                self.target.to(explainee_pred.device) - 0.5
+            )
+            egg_size = (gen_egg[0].shape[1] + gen_egg[2].shape[1])
 
-        return omega * (approx_GED + embed_loss)
+        # with torch.no_grad():
+        #     omega = (self.gamma - 
+        #         self.criterion(
+        #             explainee_pred, 
+        #             self.target.expand_as(explainee_pred).
+        #                 to(explainee_pred.device)
+        #         )
+        #     ) ** 3
+
+        return omega * (approx_GED / egg_size + embed_loss)
         

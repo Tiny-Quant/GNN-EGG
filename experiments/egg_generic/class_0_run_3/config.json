@@ -10,9 +10,9 @@
     "sub_sampling_strat": null, 
     "batch_size": 4, 
     "batches_per_param": 3,   
-    "MAX_NODE_SIZE": 20, 
-    "temp": 0.25, 
-    "pred_loss_weight": 10.0, 
+    "MAX_NODE_SIZE": 10, 
+    "temp": 0.15, 
+    "pred_loss_weight": 1.0, 
     "edge_loss_weight": 0.0, 
-    "struct_loss_weight": 1e-2
+    "struct_loss_weight": 1.0
 }
