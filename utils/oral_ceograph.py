@@ -359,14 +359,14 @@ def nuclei_to_data(G: NucleiData, num_cell_types: int):
     node_matrix = nn.functional.one_hot(G.cell_type - 1, num_cell_types)
     node_matrix = torch.cat((G.x, node_matrix), dim=-1)
 
-    edge_index = torch_geometric.utils.to_dense_adj(G.edge_index) + 1e-8
+    edge_index = torch_geometric.utils.to_dense_adj(G.edge_index) # + 1e-8
     edge_index, edge_weights, _ = dense_to_sparse(edge_index)
     edge_index = edge_index.transpose(1, 2).squeeze(0)
 
     edge_attr = G.edge_attr
-    zero_pad = torch.zeros((edge_index.shape[1] - edge_attr.shape[0], 
-                            edge_attr.shape[1])).to(edge_attr.device)
-    edge_attr = torch.cat((edge_attr, zero_pad), dim=0)
+    # zero_pad = torch.zeros((edge_index.shape[1] - edge_attr.shape[0], 
+    #                         edge_attr.shape[1])).to(edge_attr.device)
+    # edge_attr = torch.cat((edge_attr, zero_pad), dim=0)
     edge_attr = torch.cat((edge_attr, edge_weights.squeeze(0) - 1e-8), dim=-1)
 
     return Data(node_matrix, edge_index, edge_attr)
