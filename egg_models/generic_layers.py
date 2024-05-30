@@ -157,7 +157,7 @@ class BinaryConcrete(nn.Module):
     of size [batch].
     '''
     def __init__(self, batch_size, num_rows, num_cols, temp, 
-                 allow_self_loops):
+                 allow_self_loops=False):
         super(BinaryConcrete, self).__init__()
         self.batch_size = batch_size
         self.num_rows = num_rows
