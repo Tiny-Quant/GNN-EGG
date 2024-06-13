@@ -183,6 +183,7 @@ class EggGenericTrainer(BaseTrainer):
                  dis_node_indices: Optional[Tuple]=None,
                  cont_edge_indices: Optional[Tuple]=None, 
                  dis_edge_indices: Optional[Tuple]=None, 
+                 dis_imp_ratio: float=1.0, 
                  loss_term_weights=torch.tensor([1.0, 1.0, 1.0]), 
                  edge_budget=None, 
                  reinforce_pred=False, 
@@ -237,7 +238,8 @@ class EggGenericTrainer(BaseTrainer):
                                      cont_node_indices, 
                                      dis_node_indices,  
                                      cont_edge_indices, 
-                                     dis_edge_indices)
+                                     dis_edge_indices, 
+                                     dis_imp_ratio)
 
         self.struct_loss_fn = StructuralLoss(self.GED_fn, self.explainee, 
                                              self.gamma, self.target, 

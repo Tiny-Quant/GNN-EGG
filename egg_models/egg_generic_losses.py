@@ -1,5 +1,6 @@
 from functools import partial 
 from typing import Dict, List, Tuple, Callable, Optional
+import math 
 
 import torch 
 import torch.nn as nn 
@@ -161,12 +162,14 @@ class GEDasMatchLoss(nn.Module):
         self.cont_edge_indices = cont_edge_indices
         self.dis_edge_indices = dis_edge_indices
 
-        self.cont_edit_weight = 1 / (2 + 2 * dis_imp_ratio)
-        self.dis_edit_weight = 2 * dis_imp_ratio / (2 + 2 * dis_imp_ratio)
-        assert (2 * self.cont_edit_weight + 
-                    self.dis_edit_weight == 1), "Fails GED Interp."
-        assert (self.dis_edit_weight == 
-                2 * dis_imp_ratio * self.cont_edit_weight), "Failed ratio test."
+        self.cont_edit_weight = 1.0 / (2.0 + 2.0 * dis_imp_ratio)
+        self.dis_edit_weight = 2.0 * dis_imp_ratio / (2.0 + 2.0 * dis_imp_ratio)
+        assert (2.0 * self.cont_edit_weight + 
+                    self.dis_edit_weight == 1
+        ), "Fails GED Interp."
+        assert (math.isclose(self.dis_edit_weight, 
+                             2.0 * dis_imp_ratio * self.cont_edit_weight)
+        ), "Failed ratio test." 
 
         # self.grad_strength = grad_strength
 

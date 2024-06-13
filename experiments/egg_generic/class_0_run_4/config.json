@@ -3,8 +3,8 @@
     "optimizer_name": "RMSprop" , 
     "learning_rate": 0.001, 
     "auto_mixed_precision": false, 
-    "tensorboard_path": "experiments/egg_generic/class_0_run_3/tensorboard", 
-    "checkpoint_path": "experiments/egg_generic/class_0_run_3/checkpoints", 
+    "tensorboard_path": "experiments/egg_generic/class_0_run_4/tensorboard", 
+    "checkpoint_path": "experiments/egg_generic/class_0_run_4/checkpoints", 
     "save_every": 10, 
     "target_class": 0, 
     "sub_sampling_strat": null, 
@@ -14,5 +14,6 @@
     "temp": 0.15, 
     "pred_loss_weight": 1.0, 
     "edge_loss_weight": 0.0, 
-    "struct_loss_weight": 1.0
+    "struct_loss_weight": 1.0, 
+    "dis_imp_ratio": 10.0  
 }
