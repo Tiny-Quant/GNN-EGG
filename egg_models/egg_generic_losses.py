@@ -147,8 +147,9 @@ class GEDasMatchLoss(nn.Module):
                  dis_node_indices: tuple,
                  cont_edge_indices: tuple, 
                  dis_edge_indices: tuple, 
-                 cont_edit_weight=0.25, 
-                 dis_edit_weight=0.5, 
+                 dis_imp_ratio = 1, 
+                 #cont_edit_weight=0.25, 
+                 #dis_edit_weight=0.5, 
                  #grad_strength=1e-1, 
                  #device=torch.device(0)
                  ):
@@ -160,8 +161,12 @@ class GEDasMatchLoss(nn.Module):
         self.cont_edge_indices = cont_edge_indices
         self.dis_edge_indices = dis_edge_indices
 
-        self.cont_edit_weight = cont_edit_weight
-        self.dis_edit_weight = dis_edit_weight
+        self.cont_edit_weight = 1 / (2 + 2 * dis_imp_ratio)
+        self.dis_edit_weight = 2 * dis_imp_ratio / (2 + 2 * dis_imp_ratio)
+        assert (2 * self.cont_edit_weight + 
+                    self.dis_edit_weight == 1), "Fails GED Interp."
+        assert (self.dis_edit_weight == 
+                2 * dis_imp_ratio * self.cont_edit_weight), "Failed ratio test."
 
         # self.grad_strength = grad_strength
 
