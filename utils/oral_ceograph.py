@@ -367,7 +367,7 @@ def nuclei_to_data(G: NucleiData, num_cell_types: int):
     # zero_pad = torch.zeros((edge_index.shape[1] - edge_attr.shape[0], 
     #                         edge_attr.shape[1])).to(edge_attr.device)
     # edge_attr = torch.cat((edge_attr, zero_pad), dim=0)
-    edge_attr = torch.cat((edge_attr, edge_weights.squeeze(0) - 1e-8), dim=-1)
+    edge_attr = torch.cat((edge_attr, edge_weights.squeeze(0)), dim=-1)
 
     return Data(node_matrix, edge_index, edge_attr)
 

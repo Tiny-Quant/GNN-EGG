@@ -149,6 +149,7 @@ class GEDasMatchLoss(nn.Module):
                  cont_edge_indices: tuple, 
                  dis_edge_indices: tuple, 
                  dis_imp_ratio = 1, 
+                 QAP_solver = pygm.rrwm, 
                  #cont_edit_weight=0.25, 
                  #dis_edit_weight=0.5, 
                  #grad_strength=1e-1, 
@@ -170,6 +171,8 @@ class GEDasMatchLoss(nn.Module):
         assert (math.isclose(self.dis_edit_weight, 
                              2.0 * dis_imp_ratio * self.cont_edit_weight)
         ), "Failed ratio test." 
+
+        self.QAP_solver = QAP_solver
 
         # self.grad_strength = grad_strength
 
@@ -319,7 +322,7 @@ class GEDasMatchLoss(nn.Module):
 
     def get_dis_match_mat(self, aff_mat):
 
-        match_mat = pygm.rrwm(aff_mat, n1=self.n1, n2=self.n2)
+        match_mat = self.QAP_solver(aff_mat, n1=self.n1, n2=self.n2)
 
         dis_match_mat = pygm.hungarian(match_mat)
 
