@@ -15,6 +15,16 @@ from pygmtools.utils import build_aff_mat
 from utils import misc
 
 # %% Helper Functions
+def fill_diagonal(input_tensor, value):
+    # Create a copy of the input tensor
+    output_tensor = input_tensor.clone()
+    
+    # Fill the diagonal with the specified value
+    for i in range(min(output_tensor.size(0), output_tensor.size(1))):
+        output_tensor[i, i] = value
+    
+    return output_tensor
+
 def activation_hook(model: nn.Module,
                     layer_names: List[str]) -> Tuple[Dict[str, torch.Tensor], 
                                                      Callable]:
@@ -321,6 +331,16 @@ class GEDasMatchLoss(nn.Module):
         return aff_mat
 
     def get_dis_match_mat(self, aff_mat):
+
+        if self.QAP_solver == "identity":
+            dummy_mat = pygm.rrwm(aff_mat, n1=self.n1, n2=self.n2).zero_()
+
+            identity = torch.stack(
+                [fill_diagonal(batch, 1.0)
+                 for batch in dummy_mat.unbind()]
+            )
+            
+            return identity
 
         match_mat = self.QAP_solver(aff_mat, n1=self.n1, n2=self.n2)
 

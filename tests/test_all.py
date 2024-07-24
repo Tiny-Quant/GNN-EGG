@@ -708,6 +708,46 @@ def test_GEDasMatchLoss_oral_ceograph(gen_output_oral_ceograph, data_list_oral_c
 
     check_grads_exist(loss, generator_oral_ceograph)
 
+def test_GEDasMatchLoss_identity_oral_ceograph(
+    gen_output_oral_ceograph, data_list_oral_ceograph, 
+    generator_oral_ceograph, device):
+    """
+    Test the output shape, range, and all model gradients for the GEDasMatchLoss 
+    function using the identity solver for the oral ceograph test case. 
+    """
+    loss_fn = egg_generic_losses.GEDasMatchLoss(
+        node_size=10, 
+        cont_node_indices=(slice(0, 11), ), 
+        dis_node_indices=(slice(11, 16), ),
+        cont_edge_indices=(slice(1, 3), ), 
+        dis_edge_indices=(3, ), 
+        QAP_solver="identity"
+    )
+
+    gen = oral_ceograph.egg_to_egg(gen_output_oral_ceograph)
+
+    ex_batch = Batch.from_data_list(data_list_oral_ceograph).to(device)
+
+    obs = oral_ceograph.ex_to_egg(ex_batch, 4)
+
+    loss = loss_fn(*gen, *obs)
+
+    assert loss.shape == (2,)
+
+    # assert (aff_mat <= 0.0).all()
+    # assert (aff_mat >= -1.0).all()
+
+    assert (loss >= -1e-5).all()
+    assert (loss <= gen[0].shape[1] + gen[2].shape[1]).all()
+
+    check_grads_exist(loss, generator_oral_ceograph)
+
+    loss_0 = loss_fn(*obs, *obs)
+
+    assert loss_0.shape == (2,)
+    assert torch.allclose(loss_0, torch.zeros_like(loss_0), atol=1e-5)
+    assert (loss_0 <= obs[0].shape[1] + obs[2].shape[1]).all()
+
 def test_StructuralLoss_oral_ceograph(explainee_oral_ceograph, 
                                       gamma_oral_ceograph, 
                                       target_oral_ceograph, 
