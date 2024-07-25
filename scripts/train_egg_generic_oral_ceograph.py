@@ -7,6 +7,8 @@ import torch.nn as nn
 from torch.optim.optimizer import Optimizer as Optimizer
 torch.autograd.set_detect_anomaly(True)
 
+import pygmtools as pygm 
+
 # Adds the repo directory to the import paths.
 import sys
 from os.path import dirname, abspath
@@ -145,6 +147,7 @@ if __name__ == '__main__':
                     dis_node_indices: Optional[Tuple]=None,
                     cont_edge_indices: Optional[Tuple]=None, 
                     dis_edge_indices: Optional[Tuple]=None, 
+                    QAP_solver=pygm.rrwm, 
                     dis_imp_ratio: float=1.0, 
                     edge_budget=None, 
                     reinforce_pred=False, 
@@ -166,6 +169,7 @@ if __name__ == '__main__':
                 cont_edge_indices=cont_edge_indices,
                 dis_edge_indices=dis_edge_indices, 
                 dis_imp_ratio=dis_imp_ratio, 
+                QAP_solver=QAP_solver, 
                 edge_budget=edge_budget, 
                 reinforce_pred=reinforce_pred,reinforce_struct=reinforce_struct, 
                 sub_sampler=sub_sampler, repeat_sampling=repeat_sampling,
@@ -203,13 +207,20 @@ if __name__ == '__main__':
     generator.train()
 
     # Dynamically create the optimizer class
-    optimizer_class_str = "optim." + optimizer_name
+    #optimizer_class_str = "optim." + optimizer_name
     optimizer_class = getattr(torch.optim, optimizer_name, None)
 
     if optimizer_class is not None:
         optimizer = optimizer_class(generator.parameters(), lr=learning_rate)
     else:
         raise ValueError(f"Unsupported optimizer: {optimizer_name}")
+
+    # Dynamically create QAP solver class
+    if QAP_solver_name == "identity":
+        QAP_solver = "identity"
+    else:
+        #QAP_solver_str = "pygm" + QAP_solver_name
+        QAP_solver = getattr(pygm, QAP_solver_name, None)
 
     # Define trainer.  
     trainer = SpecificTrainer(
@@ -226,6 +237,7 @@ if __name__ == '__main__':
         cont_edge_indices=CONT_EDGE_INDICES, 
         dis_edge_indices=DIS_EDGE_INDICES, 
         dis_imp_ratio=dis_imp_ratio, 
+        QAP_solver=QAP_solver, 
         optimizer=optimizer, 
         batches_per_param=batches_per_param,
         auto_mixed_precision=auto_mixed_precision, 
