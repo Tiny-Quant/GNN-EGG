@@ -9,6 +9,7 @@ import dill as pickle
 import numpy as np
 import pandas as pd
 from functools import partial
+import argparse
 
 import torch
 import torch.distributions as td
@@ -28,7 +29,7 @@ from ray import train
 from egg_models import egg_generic_losses
 from egg_models.egg_generic import EggGeneric
 from egg_models.egg_generic import EggGeneric
-from egg_models.egg_generic_losses import GEDasMatchLoss
+from egg_models.egg_generic_losses import GEDasMatchLoss, EdgePenalty
 
 from utils import mutag_helper
 from utils import visuals
@@ -43,7 +44,7 @@ np.random.seed(SEED)
 
 # Meta-Data
 device = torch.device(0)    
-num_epochs = 25
+num_epochs = 50
 
 # %%
 # Load explainee model.
@@ -125,6 +126,10 @@ def train_function(config, target, explainee, train_data_ref, test_data_ref):
         QAP_solver=pygm.ngm, 
     )
 
+    edge_pen_fn = EdgePenalty(
+        edge_budget=config["budget"] * config["max_node_size"]
+    )
+
     optimizer = torch.optim.RMSprop(generator.parameters(), lr=config["lr"])  
     lr_schedule = torch.optim.lr_scheduler.ExponentialLR(
         optimizer, gamma=config["lr_decay"]
@@ -156,6 +161,12 @@ def train_function(config, target, explainee, train_data_ref, test_data_ref):
                     target.to(explainee_pred.device) - 0.5
                 )
 
+            if config['var_egg_size']: 
+                egg_size = torch.tensor([
+                    graph.x.shape[0] + graph.edge_index.shape[1] 
+                    for graph in gen_ex.to_data_list()
+                ]).to(device)
+            else: 
                 egg_size = (gen_egg[0].shape[1] + gen_egg[2].shape[1])
 
             # Compute L2. 
@@ -163,7 +174,12 @@ def train_function(config, target, explainee, train_data_ref, test_data_ref):
 
             # Compute L3. 
             loss_3 = config["l2_weight"] * omega * loss_2 # Lambda_2
-            
+
+            edge_pen = (
+                config["edge_pen_weight"] * 
+                edge_pen_fn(generator.AdjacencyMatrix.probs)
+            )
+
             loss = loss_1 + loss_3
 
             loss = loss.mean()
@@ -191,7 +207,10 @@ def train_function(config, target, explainee, train_data_ref, test_data_ref):
     test_loader = pyg.loader.DataLoader(
         test_data, batch_size=config["batch_size"], drop_last=True
     )
+
+    # Mean Edit
     running_GED = 0
+    running_Density = 0
     for batch in test_loader:
         batch.to(device)
         generated = generator()
@@ -199,26 +218,55 @@ def train_function(config, target, explainee, train_data_ref, test_data_ref):
         gen_egg = mutag_helper.egg_to_egg(generated)
         obs_egg = mutag_helper.ex_to_egg(batch)
 
-        GED = GED_fn(*gen_egg, *obs_egg) / (gen_egg[0].shape[1] + gen_egg[2].shape[1])
+        GED = GED_fn(*gen_egg, *obs_egg) / egg_size
         running_GED += GED.mean().item()
+
+        egg_size = torch.tensor([
+            graph.x.shape[0] + graph.edge_index.shape[1] 
+            for graph in gen_ex.to_data_list()
+        ]).to(device)
+        max_size = (gen_egg[0].shape[1] + gen_egg[2].shape[1])
+        running_Density += (egg_size / max_size).mean().item()
+
     mean_GED = running_GED / len(test_loader)    
+    mean_Density = running_Density / len(test_loader)
 
     train.report(
         {"loss": loss.item(), 
          "mean_pred": mean_pred, 
-         "mean_GED": mean_GED}
+         "mean_GED": mean_GED, 
+         "mean_Density": mean_Density}
     ) 
 
 if __name__ == '__main__':
 
+    # Terminal Arguments
+    parser = argparse.ArgumentParser() 
+    parser.add_argument(
+        # from repo dir
+        '--target', 
+        type=int, 
+        default=1
+    )
+    opt = parser.parse_args()
+
+    target_selection = opt.target
+    if target_selection:
+        target = torch.tensor([0.0, 1.0])
+    else: 
+        target = torch.tensor([1.0, 0.0])
+
     config = {
-        "max_node_size": tune.choice([5, 10, 20]),
+        "max_node_size": tune.choice([5, 10, 20, 30]),
         "temp": tune.choice([0.1, 0.15, 0.2]), 
         "batch_size": tune.choice([16]), 
         "lr": tune.choice([1e-4, 1e-3]),  
         "lr_decay": tune.choice([0.1, 1.0]), 
         "l1_weight": tune.choice([0.0, 0.5, 1.0]), 
         "l2_weight": tune.choice([0.0, 0.5, 1.0]),
+        "var_egg_size": tune.choice([True, False]),
+        "edge_pen_weight": tune.choice([0.0, 1e-4, 1e-2]), 
+        "budget": tune.choice([0.0, 1.0, 2.0])
     }
 
     tune_scheduler = ASHAScheduler(
@@ -233,7 +281,7 @@ if __name__ == '__main__':
     result = tune.run(
         tune.with_parameters(
             train_function, 
-            target=torch.tensor([1.0, 0.0]), 
+            target=target, 
             explainee=explainee, 
             train_data_ref=train_data_ref, 
             test_data_ref=test_data_ref
@@ -241,5 +289,11 @@ if __name__ == '__main__':
         config=config,
         num_samples=100,  
         scheduler=tune_scheduler, 
-        resources_per_trial={"cpu": 4, "gpu": 0.1}
+        resources_per_trial={"cpu": 6, "gpu": 0.1}
     )
+
+    df = result.results_df
+    print(df)
+    df_name = "MUTAG_tuned_results" + target_selection + ".csv"
+    df.to_csv(df_name, index=False)
+    df.to_csv("results/MUTAG/" + df_name, index=False)

@@ -432,9 +432,10 @@ if __name__ == '__main__':
         config=config, 
         num_samples=100,
         #scheduler=tune_scheduler, 
-        resources_per_trial={"cpu": 6}
+        resources_per_trial={"cpu": 6, "gpu": 0.1}
     )
 
     df = result.results_df
     print(df)
-    df.to_csv("/results/simulation/simulation_tuned_results.csv", index=False)
+    df.to_csv("simulation_tuned_results.csv", index=False)
+    df.to_csv("results/simulation/simulation_tuned_results.csv", index=False)
