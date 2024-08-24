@@ -398,6 +398,46 @@ def simulation_fn(config):
         get_GED_between(c1_test, c4, GED_fn)
     )
 
+    # 4. dist(3, 0) != dist(0, 0)
+    m7 = (
+        get_embed_dist_only_2(model, c3, avg_c0_embeds_only_2) - 
+        get_embed_dist_only_2(model, c0_test, avg_c0_embeds_only_2)
+    )
+    m8 = (
+        get_GED_between(c0_test, c3, GED_fn) - 
+        get_GED_between(c0_test, c0_test, GED_fn)
+    )
+
+    # 5. dist(4, 0) != dist(0, 0)
+    m9 = (
+        get_embed_dist_only_2(model, c4, avg_c0_embeds_only_2) - 
+        get_embed_dist_only_2(model, c0_test, avg_c0_embeds_only_2)
+    )
+    m10 = (
+        get_GED_between(c0_test, c4, GED_fn) - 
+        get_GED_between(c0_test, c0_test, GED_fn)
+    )
+
+    # 6. dist(3, 1) != dist(1, 1)
+    m11 = (
+        get_embed_dist_only_2(model, c3, avg_c1_embeds_only_2) - 
+        get_embed_dist_only_2(model, c1_test, avg_c1_embeds_only_2)
+    )
+    m12 = (
+        get_GED_between(c1_test, c3, GED_fn) - 
+        get_GED_between(c1_test, c1_test, GED_fn)
+    )
+
+    # 7. dist(4, 1) != dist(1, 1)
+    m13 = (
+        get_embed_dist_only_2(model, c4, avg_c1_embeds_only_2) - 
+        get_embed_dist_only_2(model, c1_test, avg_c1_embeds_only_2)
+    )
+    m14 = (
+        get_GED_between(c1_test, c4, GED_fn) - 
+        get_GED_between(c1_test, c1_test, GED_fn)
+    )
+
     # Checks 
     # 1. c0 is far from c1. 
     check1 = (
@@ -407,12 +447,26 @@ def simulation_fn(config):
     check2 = (
        get_GED_between(c0_test, c1_test, GED_fn)  - 
        get_GED_between(c0_test, c0_test, GED_fn)
-    )
+    ) 
 
-    train.report(
-        {"m1": m1, "m2": m2, "m3": m3, "m4": m4, "m5": m5, "m6": m6, 
-         "check1": check1, "check2": check2}
-    )
+    train.report({
+        'm1': m1,
+        'm2': m2,
+        'm3': m3,
+        'm4': m4,
+        'm5': m5,
+        'm6': m6,
+        'm7': m7,
+        'm8': m8,
+        'm9': m9,
+        'm10': m10,
+        'm11': m11,
+        'm12': m12,
+        'm13': m13, 
+        'm14': m14, 
+        'check1': check1, 
+        'check2' : check2
+    })
 
 # %%
 if __name__ == '__main__':
@@ -437,5 +491,5 @@ if __name__ == '__main__':
 
     df = result.results_df
     print(df)
-    df.to_csv("simulation_tuned_results.csv", index=False)
-    df.to_csv("results/simulation/simulation_tuned_results.csv", index=False)
+    #df.to_csv("simulation_tuned_results.csv", index=False)
+    df.to_csv("results/simulation/simulation_tuned_results_2.csv", index=False)
