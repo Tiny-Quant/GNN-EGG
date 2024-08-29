@@ -578,7 +578,7 @@ if __name__ == '__main__':
         "offset": tune.uniform(-1, 1),
         "mu0": tune.uniform(1, 3), 
         "mu1_noise": tune.uniform(0, 1), 
-        "r": tune.uniform(1, 3), 
+        "r": tune.uniform(2, 5), 
         "rand_init": tune.choice([True, False]), 
         "cont_edge_loc": tune.uniform(-1, 1), 
         "prob_X_d": tune.uniform(0, 1), 
@@ -592,9 +592,9 @@ if __name__ == '__main__':
         sim_fn, 
         config=config, 
         num_samples=100,
-        resources_per_trial={"cpu": 7, "gpu": 0.05}
+        resources_per_trial={"cpu": 3, "gpu": 0.05}
     )
 
     df = result.results_df
     print(df)
-    df.to_csv("results/simulation/sim_tunned_parameter_bias.csv", index=False)
+    df.to_csv("results/simulation/sim_tunned_parameter_bias_2.csv", index=False)
