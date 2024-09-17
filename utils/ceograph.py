@@ -11,6 +11,7 @@ import torch.multiprocessing as mp
 from torch.multiprocessing import Pool
 
 import torch_geometric as pyg
+from torch_geometric.utils import remove_isolated_nodes, remove_self_loops
 from torch_geometric.nn import GCNConv, NNConv, global_max_pool
 from torch_geometric.data import Data, Batch
 from torch_geometric.utils import remove_isolated_nodes
@@ -201,15 +202,15 @@ def assign_edge_type(A, C_x):
     return e_c
 
 
-def load_model(path, device=torch.device(0), batched=False): 
-    model = NucleiNet(11, 2, batch=batched)
-    model.to(device)
-    model.load_state_dict(torch.load(
-            path, 
-            map_location=device
-        )
-    )
-    return model
+# def load_model(path, device=torch.device(0), batched=False): 
+#     model = NucleiNet(11, 2, batch=batched)
+#     model.to(device)
+#     model.load_state_dict(torch.load(
+#             path, 
+#             map_location=device
+#         )
+#     )
+#     return model
 
 def nuclei_to_nx(data: NucleiData) -> nx.DiGraph: 
     '''
@@ -231,86 +232,213 @@ def nuclei_to_nx(data: NucleiData) -> nx.DiGraph:
 
     return G
 
-def nuclei_to_data(G: NucleiData):
-    node_matrix = nn.functional.one_hot(G.cell_type - 1, 6)
+# def nuclei_to_data(G: NucleiData):
+#     node_matrix = nn.functional.one_hot(G.cell_type - 1, 6)
+#     node_matrix = torch.cat((G.x, node_matrix), dim=-1)
+
+#     edge_index = pyg.utils.to_dense_adj(G.edge_index) + 1e-8
+#     edge_index, edge_weights, _ = dense_to_sparse(edge_index)
+#     edge_index = edge_index.transpose(1, 2).squeeze(0)
+
+#     edge_attr = G.edge_attr
+#     zero_pad = torch.zeros((edge_index.shape[1] - edge_attr.shape[0], 
+#                             edge_attr.shape[1]))
+#     edge_attr = torch.cat((edge_attr, zero_pad), dim=0)
+#     edge_attr = torch.cat((edge_attr, edge_weights.squeeze(0)), dim=-1)
+
+
+#     return Data(node_matrix, edge_index, edge_attr)
+
+def nuclei_to_data(G: NucleiData, num_cell_types: int):
+    node_matrix = nn.functional.one_hot(G.cell_type - 1, num_cell_types)
     node_matrix = torch.cat((G.x, node_matrix), dim=-1)
 
-    edge_index = pyg.utils.to_dense_adj(G.edge_index) + 1e-8
+    edge_index = torch_geometric.utils.to_dense_adj(G.edge_index) # + 1e-8
     edge_index, edge_weights, _ = dense_to_sparse(edge_index)
     edge_index = edge_index.transpose(1, 2).squeeze(0)
 
     edge_attr = G.edge_attr
-    zero_pad = torch.zeros((edge_index.shape[1] - edge_attr.shape[0], 
-                            edge_attr.shape[1]))
-    edge_attr = torch.cat((edge_attr, zero_pad), dim=0)
     edge_attr = torch.cat((edge_attr, edge_weights.squeeze(0)), dim=-1)
-
 
     return Data(node_matrix, edge_index, edge_attr)
 
-def clear_iso_nodes(example: NucleiData, 
-                    num_nodes: Optional[int] = None) -> NucleiData: 
-    '''
-    Should not lose grad - checked in debugging.ipynb. 
-    '''
+# def clear_iso_nodes(example: NucleiData, 
+#                     num_nodes: Optional[int] = None) -> NucleiData: 
+#     '''
+#     Should not lose grad - checked in debugging.ipynb. 
+#     '''
+#     edge_index, edge_attr, mask = (
+#         remove_isolated_nodes(example.edge_index, 
+#                               example.edge_attr, 
+#                               num_nodes=num_nodes)
+#     )
+#     example_masked = NucleiData(
+#         x = example.x[mask], 
+#         edge_index = edge_index, 
+#         cell_type = example.cell_type[mask], 
+#         edge_attr = edge_attr,
+#     )
+
+#     return example_masked
+
+def clean_gen_graph(gen: NucleiData) -> NucleiData:
+
+    edge_index = gen.edge_index
+    edge_attr = gen.edge_attr
+
+    edge_index, edge_attr = remove_self_loops(edge_index, edge_attr)
+
     edge_index, edge_attr, mask = (
-        remove_isolated_nodes(example.edge_index, 
-                              example.edge_attr, 
-                              num_nodes=num_nodes)
+        remove_isolated_nodes(edge_index, edge_attr, num_nodes=gen.x.shape[0])
     )
-    example_masked = NucleiData(
-        x = example.x[mask], 
+
+    # Uninformative values for when all nodes get cleared. 
+    # Needed to maintain mini-batch information. 
+    if gen.x[mask].shape[0] == 0:
+        x = gen.x * 0.0
+        cell_types = torch.ones_like(gen.cell_type) * gen.cell_type.mode().values
+    else: 
+        x = gen.x[mask]
+        cell_types = gen.cell_type[mask]
+
+    gen_cleaned = NucleiData(
+        x = x, 
         edge_index = edge_index, 
-        cell_type = example.cell_type[mask], 
+        cell_type = cell_types,
         edge_attr = edge_attr,
     )
 
-    return example_masked
+    return gen_cleaned
 
-class ObsDataset(Dataset):
-    def __init__(self, data):
-        self.data = data
+# class ObsDataset(Dataset):
+#     def __init__(self, data):
+#         self.data = data
     
-    def __len__(self):
-        return len(self.data)
+#     def __len__(self):
+#         return len(self.data)
 
-    def __getitem__(self, index):
-        graph_batch = self.data[index]
-        X = graph_batch.x 
-        A = graph_batch.edge_index.t()
-        E = graph_batch.edge_attr
-        return {'obs_X': X, 'obs_A': A, 'obs_E': E}
+#     def __getitem__(self, index):
+#         graph_batch = self.data[index]
+#         X = graph_batch.x 
+#         A = graph_batch.edge_index.t()
+#         E = graph_batch.edge_attr
+#         return {'obs_X': X, 'obs_A': A, 'obs_E': E}
 
-def pygm_collate_fn(batch):
-    # Assuming you have a custom padding function that pads and creates batches
-    # Modify this function according to your specific padding logic
-    X_batch = build_batch([item['obs_X'] for item in batch])
-    A_batch = build_batch([item['obs_A'] for item in batch])
-    E_batch = build_batch([item['obs_E'] for item in batch])
+# def pygm_collate_fn(batch):
+#     # Assuming you have a custom padding function that pads and creates batches
+#     # Modify this function according to your specific padding logic
+#     X_batch = build_batch([item['obs_X'] for item in batch])
+#     A_batch = build_batch([item['obs_A'] for item in batch])
+#     E_batch = build_batch([item['obs_E'] for item in batch])
 
-    return {'obs_X': X_batch, 'obs_A': A_batch, 'obs_E': E_batch}
+#     return {'obs_X': X_batch, 'obs_A': A_batch, 'obs_E': E_batch}
 
-def get_obs_loader(raw: List[NucleiData], node_limit=1000, batch_size=1, 
-                   shuffle=True):
-    node_limited = []
-    for graph in raw:
-        if graph.x.shape[0] <= node_limit: 
-            temp = nuclei_to_data(graph)
-            node_limited.append(temp)
-    obs_dataset = ObsDataset(node_limited) 
-    obs_loader = DataLoader(obs_dataset, batch_size=batch_size, 
-                            collate_fn=pygm_collate_fn, shuffle=shuffle, 
-                            drop_last=True)
+# def get_obs_loader(raw: List[NucleiData], node_limit=1000, batch_size=1, 
+#                    shuffle=True):
+#     node_limited = []
+#     for graph in raw:
+#         if graph.x.shape[0] <= node_limit: 
+#             temp = nuclei_to_data(graph)
+#             node_limited.append(temp)
+#     obs_dataset = ObsDataset(node_limited) 
+#     obs_loader = DataLoader(obs_dataset, batch_size=batch_size, 
+#                             collate_fn=pygm_collate_fn, shuffle=shuffle, 
+#                             drop_last=True)
 
-    return obs_loader
+#     return obs_loader
 
-def get_nuclei_batch(X, C_x, A, E):
+# def get_nuclei_batch(X, C_x, A, E):
 
-    nuclei_list = [clear_iso_nodes(NucleiData(X, C_x, A, E))
-                    for (X, C_x, A, E) in zip(
-                        X.unbind(), C_x.unbind(), A.unbind(), 
-                        E.unbind()
-                  )]
+#     nuclei_list = [clear_iso_nodes(NucleiData(X, C_x, A, E))
+#                     for (X, C_x, A, E) in zip(
+#                         X.unbind(), C_x.unbind(), A.unbind(), 
+#                         E.unbind()
+#                   )]
 
-    return Batch().from_data_list(nuclei_list)
+#     return Batch().from_data_list(nuclei_list)
 
+def egg_to_ex(generated: dict):
+    """
+    Implementation of egg_to_ex for the trainer of an EggGeneric model 
+    for lung ceograph data. 
+    """
+    with torch.no_grad():
+        C_x_hard = torch.argmax(
+            generated['dis_node_feats'], dim=-1
+        ) + 1
+
+        A_hard = (generated['adjacency_matrix'] >= 0.5)
+        edge_index = dense_to_sparse(A_hard)[0].transpose(1, 2)
+        
+        edge_types = (assign_edge_type(edge_index, C_x_hard).
+                        to(edge_index.device))
+
+        E_hard = (generated['cont_edge_feats'].
+                    narrow(dim=1, start=0, length=edge_index.shape[2])
+        )
+        
+        edge_attr = torch.cat((edge_types, E_hard), dim=-1)
+
+    X = generated['cont_node_feats']
+    
+    nuclei_list = [
+        clean_gen_graph(
+            NucleiData(x=X, cell_type=C_x, edge_index=A, edge_attr=E)
+        )
+        for (X, C_x, A, E) in zip(
+            X.unbind(), C_x_hard.unbind(), 
+            edge_index.unbind(), edge_attr.unbind()
+        )
+    ]
+
+    nuclei_batch = Batch.from_data_list(nuclei_list)
+
+    return nuclei_batch
+
+def ex_to_egg(obs_batch, num_cell_types) -> List[torch.tensor]:
+    """
+    Implementation of ex_to_egg for the trainer of an EggGeneric model 
+    for lung ceograph data. 
+    """
+
+    data_list = [nuclei_to_data(graph, num_cell_types)
+                for graph in obs_batch.to_data_list()
+    ]
+
+    X_list = [graph.x for graph in data_list]
+    A_list = [graph.edge_index for graph in data_list]
+    E_list = [graph.edge_attr for graph in data_list]
+
+    return [build_batch(X_list), build_batch(A_list), build_batch(E_list)]
+
+def egg_to_egg(generated: dict) -> List[torch.tensor]: 
+    """
+    Implementation of egg_to_egg for the trainer of an EggGeneric model 
+    for lung ceograph data. 
+    """
+    with torch.no_grad():
+        C_x_hard = torch.argmax(
+            generated['dis_node_feats'], dim=-1
+        ) + 1
+
+        A = generated['adjacency_matrix']
+        edge_index = dense_to_sparse(A)[0].transpose(1, 2)
+        
+        edge_types = (assign_edge_type(edge_index, C_x_hard).
+                        to(edge_index.device))
+
+    gen_X = torch.cat([
+        generated['cont_node_feats'], 
+        generated['dis_node_feats']
+    ], dim=-1)
+
+    gen_A = generated['full_edge_indices']
+
+    gen_E = torch.cat(
+        [edge_types.to(gen_A.device), 
+         generated['cont_edge_feats'], 
+         generated['edge_weights']
+        ], dim=-1
+    )
+
+    return [gen_X, gen_A, gen_E]

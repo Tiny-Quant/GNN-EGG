@@ -19,7 +19,7 @@ from torch_geometric.data import Batch
 from egg_models import egg_generic
 from egg_models import egg_generic_losses
 
-from utils import oral_ceograph
+from utils import oral_ceograph, ceograph
 
 # fix random seeds for reproducibility
 SEED = 123
@@ -116,6 +116,24 @@ def generator_oral_ceograph_no_nodes(device):
     return mock_generator
 
 @pytest.fixture
+def generator_ceograph(device):
+    """
+    Testable EggGeneric generator model for lung ceograph data.
+    """
+    mock_generator = egg_generic.EggGeneric(
+        max_node_size=10, 
+        cont_node_feats=11,
+        cont_edge_feats=2, 
+        dis_node_feats=(6,),
+        batch_size=2, 
+        allow_self_loops=False
+    )
+
+    mock_generator.to(device)
+
+    return mock_generator
+
+@pytest.fixture
 def gen_output(generator):
     """
     Output test case I for an EggGeneric generator model. 
@@ -145,6 +163,13 @@ def gen_output_oral_ceograph_no_nodes(generator_oral_ceograph_no_nodes):
     return generator_oral_ceograph_no_nodes()
 
 @pytest.fixture
+def gen_output_ceograph(generator_ceograph):
+    """
+    Output test case lung ceograph an EggGeneric generator model. 
+    """
+    return generator_ceograph()
+
+@pytest.fixture
 def explainee2(): 
     """
     Returns a basic GCN model that works with generator2. 
@@ -164,6 +189,21 @@ def explainee_oral_ceograph(device):
     mock_explainee.load_state_dict(
         torch.load("data/explainees/HN/epoch_15.pt", map_location=device), 
         strict=False
+    )
+    mock_explainee.eval()
+
+    return mock_explainee
+
+@pytest.fixture
+def explainee_ceograph(device):
+    """
+    Returns a mock explainee for the lung ceograph model.
+    """
+    mock_explainee = ceograph.NucleiNet(11, 2, batch=True)
+    mock_explainee.to(device)
+    mock_explainee.load_state_dict(
+        torch.load("data/explainees/ceograph/epoch_263.pt", 
+                    map_location=device)
     )
     mock_explainee.eval()
 
@@ -195,6 +235,16 @@ def data_list_oral_ceograph(gen_output_oral_ceograph):
     Returns a mock data_list of oral ceograph training data. 
     """
     mock_data_list = oral_ceograph.egg_to_ex(gen_output_oral_ceograph)
+    mock_data_list.to(torch.device('cpu'))
+
+    return mock_data_list.to_data_list()
+
+@pytest.fixture
+def data_list_ceograph(gen_output_ceograph):
+    """
+    Returns a mock data list for lung ceograph training data.
+    """
+    mock_data_list = ceograph.egg_to_ex(gen_output_ceograph) 
     mock_data_list.to(torch.device('cpu'))
 
     return mock_data_list.to_data_list()
@@ -233,6 +283,24 @@ def EggGenericTrainer_oral_ceograph(generator_oral_ceograph,
     return mock_trainer
 
 @pytest.fixture
+def EggGenericTrainer_ceograph(generator_ceograph, 
+                               explainee_ceograph, 
+                               data_list_ceograph):
+
+    mock_trainer = egg_generic.EggGenericTrainer(
+       model=generator_ceograph, 
+       explainee=explainee_ceograph, 
+       target=torch.tensor([1.0, 0.0]), 
+       uninfo_target=torch.tensor([0.5, 0.5]),
+       obs_data_list=data_list_ceograph, 
+       optimizer=None, 
+       tensorboard_path=None, 
+       checkpoint_path=None, 
+    )
+
+    return mock_trainer
+
+@pytest.fixture
 def target2():
     return torch.tensor([1.0, 0.0, 0.0])
 
@@ -246,6 +314,15 @@ def avg_embed_targets_oral_ceograph(device):
     mock_embeds = {
        'conv2': torch.randn((1, 20)), 
        'conv3': torch.randn((1, 20))
+    }
+
+    return mock_embeds
+
+@pytest.fixture
+def avg_embed_targets_ceograph(device):
+    mock_embeds = {
+       'conv1': torch.randn((1, 10)), 
+       'conv2': torch.randn((1, 10))
     }
 
     return mock_embeds
@@ -447,6 +524,42 @@ def test_oral_ceograph_egg_to_ex(gen_output_oral_ceograph,
     only_self_loops['adjacency_matrix'][:, diag, diag] = 1.
 
     only_self_loops_cleaned = oral_ceograph.egg_to_ex(only_self_loops)
+
+    assert contains_self_loops(only_self_loops_cleaned.edge_index) == False
+    assert contains_isolated_nodes(only_self_loops_cleaned.edge_index) == False
+    assert only_self_loops_cleaned.x.sum() == 0
+    assert only_self_loops_cleaned.edge_index.shape[1] == 0
+    assert only_self_loops_cleaned.edge_attr.shape[0] == 0
+
+def test_ceograph_egg_to_ex(gen_output_ceograph, 
+                            explainee_ceograph):
+    """
+    Tests that the egg_to_ex function returns a tensor and that the forward 
+    pass through the explainee returns the expected shape.
+    """
+    egg_formatted_to_ex = ceograph.egg_to_ex(gen_output_ceograph)
+
+    assert egg_formatted_to_ex is not None
+
+    assert contains_self_loops(egg_formatted_to_ex.edge_index) == False
+
+    assert contains_isolated_nodes(egg_formatted_to_ex.edge_index) == False
+
+    check_graph_grad_fns(egg_formatted_to_ex)
+
+    assert isinstance(explainee_ceograph(egg_formatted_to_ex), torch.Tensor)
+    
+    assert explainee_ceograph(egg_formatted_to_ex).shape == (2, 2)
+
+
+    only_self_loops = gen_output_ceograph
+    only_self_loops['adjacency_matrix'] = torch.zeros_like(
+        only_self_loops['adjacency_matrix']
+    )
+    diag = torch.arange(only_self_loops['adjacency_matrix'].shape[1])
+    only_self_loops['adjacency_matrix'][:, diag, diag] = 1.
+
+    only_self_loops_cleaned = ceograph.egg_to_ex(only_self_loops)
 
     assert contains_self_loops(only_self_loops_cleaned.edge_index) == False
     assert contains_isolated_nodes(only_self_loops_cleaned.edge_index) == False
