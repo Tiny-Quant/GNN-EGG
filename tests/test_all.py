@@ -578,6 +578,17 @@ def test_oral_ceograph_egg_to_egg(gen_output_oral_ceograph):
     assert hasattr(gen_A, 'grad_fn')
     assert hasattr(gen_E, 'grad_fn') 
 
+def test_ceograph_egg_to_egg(gen_output_ceograph):
+    gen_X, gen_A, gen_E = ceograph.egg_to_egg(gen_output_ceograph) 
+
+    assert isinstance(gen_X, torch.Tensor)
+    assert isinstance(gen_A, torch.Tensor)
+    assert isinstance(gen_E, torch.Tensor)
+
+    assert hasattr(gen_X, 'grad_fn')
+    assert hasattr(gen_A, 'grad_fn')
+    assert hasattr(gen_E, 'grad_fn') 
+
 @pytest.mark.parametrize("sub_sampler", [
     (None), 
     ("default"), 
@@ -681,6 +692,50 @@ def test_create_dataloader_oral_ceograph(EggGenericTrainer_oral_ceograph,
 
             check_at_least_1_grad(loss, EggGenericTrainer_oral_ceograph.model)
 
+@pytest.mark.parametrize("sub_sampler", [
+    (None), 
+    ("default"), 
+    ("else")
+])
+def test_create_dataloader_ceograph(EggGenericTrainer_ceograph, 
+                                         sub_sampler): 
+    """
+    Tests is a dataloader is returned, that iterating return a batch, and 
+    the forward pass through the explainee produces at least 1 gradient. 
+    """
+    EggGenericTrainer_ceograph.sub_sampler = sub_sampler
+
+    if sub_sampler == "else": 
+        with pytest.raises(ValueError):
+            EggGenericTrainer_ceograph.create_data_loader()
+
+    else: 
+        EggGenericTrainer_ceograph.create_data_loader()
+        assert isinstance(EggGenericTrainer_ceograph.obs_data_loader, 
+                        pyg.loader.DataLoader)
+
+        for _, obs_batch in enumerate(
+            EggGenericTrainer_ceograph.obs_data_loader): 
+            
+            assert isinstance(obs_batch, pyg.data.Batch)
+
+            obs_batch.to(EggGenericTrainer_ceograph.model.device_param.device)
+            generated = EggGenericTrainer_ceograph.model()
+
+            gen_ex = ceograph.egg_to_ex(generated)
+
+            pred = EggGenericTrainer_ceograph.explainee(gen_ex)
+
+            assert isinstance(
+                pred, 
+                torch.Tensor
+            )
+
+            assert pred.shape == (2, 2) 
+
+            loss = pred.sum()
+
+            check_at_least_1_grad(loss, EggGenericTrainer_ceograph.model)
 
 @pytest.mark.parametrize(
     "dict1, dict2, act_pool_func, agg_func, expected", 
@@ -759,6 +814,26 @@ def test_PredLossBatched_oral_ceograph_no_nodes(target_oral_ceograph,
 
     check_at_least_1_grad(loss, generator_oral_ceograph_no_nodes)
 
+def test_PredLossBatched_ceograph(target_oral_ceograph, 
+                                       explainee_ceograph, 
+                                       avg_embed_targets_ceograph, 
+                                       generator_ceograph, 
+                                       gen_output_ceograph):
+    """
+    Test the output shape and gradients for the oral ceograph test case. 
+    """
+    loss_func = egg_generic_losses.PredLossBatched(
+        target=target_oral_ceograph, explainee=explainee_ceograph, 
+        avg_embed_targets=avg_embed_targets_ceograph
+    )
+    egg_formatted_to_ex = ceograph.egg_to_ex(gen_output_ceograph)
+
+    loss, activations, batch_indices = loss_func(egg_formatted_to_ex)
+
+    assert loss.shape == (2,) 
+
+    check_at_least_1_grad(loss, generator_ceograph)
+
 def test_Edge_Penalty(generator, generator2, generator_oral_ceograph): 
     """
     Test that the EdgePenalty function returns and scalar and can produce a 
@@ -820,6 +895,39 @@ def test_GEDasMatchLoss_oral_ceograph(gen_output_oral_ceograph, data_list_oral_c
     assert (loss <= gen[0].shape[1] + gen[2].shape[1]).all()
 
     check_grads_exist(loss, generator_oral_ceograph)
+
+def test_GEDasMatchLoss_ceograph(gen_output_ceograph, data_list_ceograph, 
+                        generator_ceograph, 
+                        device):
+    """
+    Test the output shape, range, and all model gradients for the GEDasMatchLoss 
+    function for the oral ceograph test case. 
+    """
+    loss_fn = egg_generic_losses.GEDasMatchLoss(
+        node_size=10, 
+        cont_node_indices=(slice(0, 11), ), 
+        dis_node_indices=(slice(11, 18), ),
+        cont_edge_indices=(slice(1, 3), ), 
+        dis_edge_indices=(3, ), 
+    )
+
+    gen = ceograph.egg_to_egg(gen_output_ceograph)
+
+    ex_batch = Batch.from_data_list(data_list_ceograph).to(device)
+
+    obs = ceograph.ex_to_egg(ex_batch, 6)
+
+    loss = loss_fn(*gen, *obs)
+
+    assert loss.shape == (2,)
+
+    # assert (aff_mat <= 0.0).all()
+    # assert (aff_mat >= -1.0).all()
+
+    assert (loss >= -1e-5).all()
+    assert (loss <= gen[0].shape[1] + gen[2].shape[1]).all()
+
+    check_grads_exist(loss, generator_ceograph)
 
 def test_GEDasMatchLoss_identity_oral_ceograph(
     gen_output_oral_ceograph, data_list_oral_ceograph, 
@@ -956,3 +1064,51 @@ def test_StructuralLoss_oral_ceograph_no_nodes(explainee_oral_ceograph,
     assert loss.shape == (2, )
 
     check_grads_exist(loss, generator_oral_ceograph_no_nodes)
+
+def test_StructuralLoss_ceograph(explainee_ceograph, 
+                                      gamma_oral_ceograph, 
+                                      target_oral_ceograph, 
+                                      gen_output_ceograph, 
+                                      data_list_ceograph,
+                                      generator_ceograph, 
+                                      avg_embed_targets_ceograph, 
+                                      device): 
+    """
+    Tests that the structural loss that integrates GED, prediction, and 
+    embedding losses returns the correct shape and creates all gradients.  
+    """
+    GED_fn = egg_generic_losses.GEDasMatchLoss(
+        node_size=10, 
+        cont_node_indices=(slice(0, 11), ), 
+        dis_node_indices=(slice(11, 16), ),
+        cont_edge_indices=(slice(1, 3), ), 
+        dis_edge_indices=(3, ), 
+    )
+
+    loss_fn = egg_generic_losses.StructuralLoss(
+        GED_fn, explainee_ceograph, 
+        gamma_oral_ceograph, target_oral_ceograph
+    )
+
+    pred_loss = egg_generic_losses.PredLossBatched(
+        target=target_oral_ceograph, explainee=explainee_ceograph, 
+        avg_embed_targets=avg_embed_targets_ceograph
+    )
+
+    gen_ex = ceograph.egg_to_ex(gen_output_ceograph)
+
+    gen_egg = ceograph.egg_to_egg(gen_output_ceograph)
+
+    obs_ex = Batch.from_data_list(data_list_ceograph).to(device)
+
+    obs_egg = ceograph.ex_to_egg(obs_ex, 6)
+
+    _, activations, batch_indices = pred_loss(gen_ex)
+
+    loss = loss_fn(gen_egg, obs_egg, obs_ex, 
+                   gen_acts=activations, 
+                   gen_acts_batch=batch_indices)
+
+    assert loss.shape == (2, )
+
+    check_grads_exist(loss, generator_ceograph)
