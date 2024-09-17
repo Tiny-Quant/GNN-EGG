@@ -72,7 +72,7 @@ if __name__ == '__main__':
     ### Write any code necessary to load your observed data samples here. ######
     ############################################################################
     #PATH_TO_OBS_DATA = "" # Expects a dill/pickled list of data objects.
-    PATH_TO_OBS_DATA = "data/explainees/ceograph/train_data_list.pkl"
+    PATH_TO_OBS_DATA = "data/explainees/ceograph/train_data_list_limited.pkl"
     with open(PATH_TO_OBS_DATA, 'rb') as f:
         obs_data_list = pickle.load(f)
 
