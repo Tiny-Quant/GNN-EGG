@@ -8,7 +8,7 @@
     "save_every": 1, 
     "target_class": 0, 
     "sub_sampling_strat": null, 
-    "batch_size": 4, 
+    "batch_size": 2, 
     "batches_per_param": 10,   
     "MAX_NODE_SIZE": 30, 
     "temp": 0.15, 
