@@ -127,6 +127,32 @@ class PredLossBatched(nn.Module):
             )
             return loss, None, None
 
+class EmbDistGeneric(nn.Module):
+    """
+    Computes the batched embeddings distance loss for an arbitrary dictionary for embeddings.
+    """
+    def __init__(self,
+                 explainee: nn.Module, 
+                 avg_embed_targets: Dict[str, torch.Tensor]):
+        super(EmbDistGeneric, self).__init__()
+
+        self.explainee = explainee
+        self.avg_embed_targets = avg_embed_targets
+
+    def forward(self, batch):
+        activations, remove_hooks = (
+            activation_hook(self.explainee, self.avg_embed_targets.keys())
+        ) 
+        explainee_pred = F.softmax(self.explainee(batch), dim=-1)
+
+    
+        loss = dict_cos_dist(activations, self.avg_embed_targets, 
+                             batch_indices1=batch.batch)
+
+        remove_hooks()
+
+        return loss 
+
 # %%
 class EdgePenalty(nn.Module):
     """
