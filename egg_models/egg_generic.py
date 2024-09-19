@@ -401,6 +401,7 @@ class EggGenericTrainer(BaseTrainer):
         edge_loss = self.edge_loss_fn(self.model.AdjacencyMatrix.probs)
 
         struct_loss = self.struct_loss_fn(gen_egg_format, obs_egg_format, 
+                                          gen_ex_format, 
                                           obs_batch, gen_act, gen_act_batch)
 
         if self.reinforce_struct:

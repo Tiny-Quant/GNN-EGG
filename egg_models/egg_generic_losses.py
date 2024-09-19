@@ -385,7 +385,7 @@ class StructuralLoss(nn.Module):
 
     def forward(self, 
                 gen_egg: List[torch.Tensor], obs_egg: List[torch.Tensor], 
-                obs_ex, 
+                gen_ex, obs_ex, 
                 gen_acts: Optional[Dict[str, torch.Tensor]]=None, 
                 gen_acts_batch: Optional[torch.Tensor]=None):
 
@@ -416,7 +416,12 @@ class StructuralLoss(nn.Module):
             omega = (explainee_pred @ 
                 self.target.to(explainee_pred.device) - 0.5
             )
-            egg_size = (gen_egg[0].shape[1] + gen_egg[2].shape[1])
+            # egg_size = (gen_egg[0].shape[1] + gen_egg[2].shape[1])
+
+            egg_size = torch.tensor([
+                graph.x.shape[0] + graph.edge_index.shape[1] 
+                for graph in gen_ex.to_data_list()
+            ]).to(approx_GED.device)
 
         # with torch.no_grad():
         #     omega = (self.gamma - 
