@@ -124,7 +124,7 @@ if __name__ == '__main__':
 
     CONT_NODE_INDICES=(slice(0, 11), )
     DIS_NODE_INDICES=(slice(11, 18), )
-    CONT_EDGE_INDICES=(slice(1, 3), )
+    CONT_EDGE_INDICES=(slice(1, 3), ) # 0 is connection type and is deterministic. 
     DIS_EDGE_INDICES=(3, )
 
     ############################################################################
