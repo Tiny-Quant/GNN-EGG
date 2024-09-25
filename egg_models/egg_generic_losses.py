@@ -439,24 +439,23 @@ class StructuralLoss(nn.Module):
                 embed_loss = torch.tensor(0.)
         
         with torch.no_grad():
-            omega = (explainee_pred @ 
-                self.target.to(explainee_pred.device) - 0.5
-            )
+            # omega = (explainee_pred @ 
+            #     self.target.to(explainee_pred.device) - 0.5
+            # )
             # egg_size = (gen_egg[0].shape[1] + gen_egg[2].shape[1])
+
+            omega = (self.gamma - 
+                self.criterion(
+                    explainee_pred, 
+                    self.target.expand_as(explainee_pred).
+                        to(explainee_pred.device)
+                )
+            )
 
             egg_size = torch.tensor([
                 graph.x.shape[0] + graph.edge_index.shape[1] 
                 for graph in gen_ex.to_data_list()
             ]).to(approx_GED.device)
-
-        # with torch.no_grad():
-        #     omega = (self.gamma - 
-        #         self.criterion(
-        #             explainee_pred, 
-        #             self.target.expand_as(explainee_pred).
-        #                 to(explainee_pred.device)
-        #         )
-        #     ) ** 3
 
         return omega * (approx_GED / egg_size + embed_loss)
         

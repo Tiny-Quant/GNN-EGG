@@ -19,7 +19,8 @@ from egg_models.generic_layers import (
 )
 from egg_models.base_trainer import BaseTrainer
 from egg_models.egg_generic_losses import(
-    PredLossBatched, EdgePenalty, StructuralLoss, GEDasMatchLoss
+    PredLossBatched, EdgePenalty, StructuralLoss, GEDasMatchLoss, 
+    EmbDistGeneric
 )
 from utils import misc
 
@@ -179,13 +180,15 @@ class EggGenericTrainer(BaseTrainer):
                  checkpoint_path: str,
                  save_every=1, 
                  avg_embed_targets: Optional[Dict[str, torch.Tensor]]=None, 
+                 # TODO: Extend to multi-class 
+                 avg_embed_other_class: Optional[Dict[str, torch.Tensor]] = None, 
                  cont_node_indices: Optional[Tuple]=None, 
                  dis_node_indices: Optional[Tuple]=None,
                  cont_edge_indices: Optional[Tuple]=None, 
                  dis_edge_indices: Optional[Tuple]=None, 
                  QAP_solver=pygm.rrwm, 
                  dis_imp_ratio: float=1.0, 
-                 loss_term_weights=torch.tensor([1.0, 1.0, 1.0]), 
+                 loss_term_weights=torch.tensor([1.0, 1.0, 1.0, 1.0]), 
                  edge_budget=None, 
                  reinforce_pred=False, 
                  reinforce_struct=False,
@@ -194,7 +197,8 @@ class EggGenericTrainer(BaseTrainer):
                  batches_per_param=1, 
                  grad_norm: Optional[float]=None, 
                  use_embeddings=True, 
-                 auto_mixed_precision=False):
+                 auto_mixed_precision=False, 
+                 retain_comp_graph=False):
 
         super().__init__(model, optimizer, 
                          tensorboard_path, checkpoint_path, save_every)
@@ -231,6 +235,10 @@ class EggGenericTrainer(BaseTrainer):
             avg_embed_targets=avg_embed_targets
         )
 
+        self.embed_dist_fn = EmbDistGeneric(self.explainee, 
+            avg_embed_targets=avg_embed_other_class
+        )
+
         self.edge_loss_fn = EdgePenalty(self.edge_budget)
 
         self.GED_fn = GEDasMatchLoss(self.model.max_node_size, 
@@ -246,6 +254,8 @@ class EggGenericTrainer(BaseTrainer):
         self.struct_loss_fn = StructuralLoss(self.GED_fn, self.explainee, 
                                              self.gamma, self.target, 
                                              use_embeddings=use_embeddings)
+
+        self.retain_comp_graph = retain_comp_graph
 
     def egg_to_ex(self, generated: dict) -> Batch: 
         """
@@ -398,6 +408,9 @@ class EggGenericTrainer(BaseTrainer):
         else: 
             pred_loss = pred_loss.mean()
 
+        # To a non-target class (hence the -1). 
+        embed_dist = -1 * self.embed_dist_fn(gen_ex_format).mean()
+
         edge_loss = self.edge_loss_fn(self.model.AdjacencyMatrix.probs)
 
         struct_loss = self.struct_loss_fn(gen_egg_format, obs_egg_format, 
@@ -414,7 +427,7 @@ class EggGenericTrainer(BaseTrainer):
         else: 
             struct_loss = struct_loss.mean()
 
-        return torch.stack([pred_loss, edge_loss, struct_loss])
+        return torch.stack([pred_loss, embed_dist, edge_loss, struct_loss])
 
     def train_one_epoch(self): 
 
@@ -430,6 +443,7 @@ class EggGenericTrainer(BaseTrainer):
             with torch.autocast(device_type=self.model.device_param.device.type, 
                                 dtype=torch.float16, 
                                 enabled=self.auto_mixed_precision): 
+                self.optimizer.zero_grad()
                 generated = self.model()
                 gen_ex_format = self.egg_to_ex(generated)
                 gen_egg_format = self.egg_to_egg(generated)
@@ -452,7 +466,7 @@ class EggGenericTrainer(BaseTrainer):
 
                 total_loss = loss_terms @ self.loss_term_weights
 
-            self.scaler.scale(total_loss).backward()
+            self.scaler.scale(total_loss).backward(retain_graph=self.retain_comp_graph)
 
             if (i + 1) % self.batches_per_param == 0:
 
@@ -468,7 +482,6 @@ class EggGenericTrainer(BaseTrainer):
 
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
-                self.optimizer.zero_grad()
 
             running_total_loss += total_loss.item()
 
@@ -478,7 +491,7 @@ class EggGenericTrainer(BaseTrainer):
 
         avg_loss_terms = running_total_loss_terms / len(self.obs_data_loader)
 
-        loss_term_names = ["Prediction", "Sparsity", "Structural"]
+        loss_term_names = ["Prediction", "Other Embeddings", "Sparsity", "Structural"]
         for i, name in enumerate(loss_term_names):
             results[name] = avg_loss_terms[i]
 

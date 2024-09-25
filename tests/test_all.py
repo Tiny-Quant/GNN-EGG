@@ -333,6 +333,43 @@ def gamma_oral_ceograph(target_oral_ceograph):
     gamma = F.cross_entropy(target_oral_ceograph, uninfo)
     return gamma
 
+@pytest.fixture
+def EggGenericTrainerFull_ceograph(
+    generator_ceograph, 
+    explainee_ceograph, 
+    data_list_ceograph, 
+    avg_embed_targets_ceograph):
+    mock_trainer = egg_generic.EggGenericTrainer(
+        model=generator_ceograph, 
+        explainee=explainee_ceograph, 
+        target=torch.tensor([1.0, 0.0]), 
+        uninfo_target=torch.tensor([0.5, 0.5]), 
+        avg_embed_targets=avg_embed_targets_ceograph, 
+        avg_embed_other_class=avg_embed_targets_ceograph, 
+        cont_node_indices=(slice(0, 11), ), 
+        dis_node_indices=(slice(11, 18), ), 
+        cont_edge_indices=(slice(1, 3), ), 
+        dis_edge_indices=(3, ), 
+        obs_data_list=data_list_ceograph, 
+        optimizer=torch.optim.RMSprop(generator_ceograph.parameters()), 
+        tensorboard_path=None, 
+        checkpoint_path=None, 
+        retain_comp_graph=True
+    )
+
+    # Overload data formatting.
+    # def ex_to_egg(self, obs_batch): 
+    #     """
+    #     """
+    #     return ceograph.ex_to_egg(obs_batch, 
+    #                                 self.model.dis_node_feats[0])
+
+    mock_trainer.egg_to_ex = ceograph.egg_to_ex
+    mock_trainer.ex_to_egg = partial(ceograph.ex_to_egg, num_cell_types=6)
+    mock_trainer.egg_to_egg = ceograph.egg_to_egg
+
+    return mock_trainer
+
 # %% Helper Functions
 def check_grads_exist(loss: torch.tensor, model: torch.nn.Module, retain=False): 
     """
@@ -1115,3 +1152,15 @@ def test_StructuralLoss_ceograph(explainee_ceograph,
     assert loss.shape == (2, )
 
     check_grads_exist(loss, generator_ceograph)
+
+def test_ceograph_trainer_full(EggGenericTrainerFull_ceograph):
+
+    results = EggGenericTrainerFull_ceograph.train_one_epoch()
+
+    model = EggGenericTrainerFull_ceograph.model
+
+    for name, param in model.named_parameters():
+        if name != "device_param": 
+            assert param.grad is not None, (
+                f"Parameter '{name}' does not have gradients"
+            )
