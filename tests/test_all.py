@@ -1009,7 +1009,8 @@ def test_StructuralLoss_oral_ceograph(explainee_oral_ceograph,
 
     _, activations, batch_indices = pred_loss(gen_ex)
 
-    loss = loss_fn(gen_egg, obs_egg, obs_ex, 
+    loss = loss_fn(gen_egg, obs_egg, 
+                   gen_ex, obs_ex, 
                    gen_acts=activations, 
                    gen_acts_batch=batch_indices)
 
@@ -1057,7 +1058,8 @@ def test_StructuralLoss_oral_ceograph_no_nodes(explainee_oral_ceograph,
 
     _, activations, batch_indices = pred_loss(gen_ex)
 
-    loss = loss_fn(gen_egg, obs_egg, obs_ex, 
+    loss = loss_fn(gen_egg, obs_egg, 
+                   gen_ex, obs_ex, 
                    gen_acts=activations, 
                    gen_acts_batch=batch_indices)
 
@@ -1105,7 +1107,8 @@ def test_StructuralLoss_ceograph(explainee_ceograph,
 
     _, activations, batch_indices = pred_loss(gen_ex)
 
-    loss = loss_fn(gen_egg, obs_egg, obs_ex, 
+    loss = loss_fn(gen_egg, obs_egg, 
+                   gen_ex, obs_ex, 
                    gen_acts=activations, 
                    gen_acts_batch=batch_indices)
 
