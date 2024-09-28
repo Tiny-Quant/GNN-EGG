@@ -252,6 +252,7 @@ def get_GED_between(data1, data2, ged_fn):
                 graph_1.edge_attr.unsqueeze(0), 
         )
 
+        #TODO: Adjust egg_size calculation.
         avg_ged += (
             ged / (graph_0.x.shape[0] + graph_0.edge_index.shape[1])
         ).item()

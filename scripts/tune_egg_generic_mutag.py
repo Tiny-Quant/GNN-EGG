@@ -42,58 +42,10 @@ torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = True 
 np.random.seed(SEED)
 
-# Meta-Data
-device = torch.device(0)    
-num_epochs = 50
 
 # %%
-# Load explainee model.
-explainee = mutag_helper.GCN2(hidden_channels=64, node_features=5, num_classes=2)
-explainee.to(device)
-explainee.load_state_dict(torch.load(
-        "data/explainees/MUTAG/gcn_200_dropped.pt", 
-        map_location=device
-    ), 
-    strict=False
-)
-explainee.eval()
-
-# %%
-# Load cleaned datasets.
-# See MUTAG.ipynb for code used to generate the data. 
-
-base_path = "data/explainees/MUTAG/"
-
-with open(base_path + "MUTAG_train_data_list_dropped.pkl", "rb") as f:
-    train_data_list = pickle.load(f)
-
-with open(os.path.join(base_path, "MUTAG_train_data_list_1_dropped.pkl"), "rb") as f:
-    train_data_list_1 = pickle.load(f)
-
-with open(base_path + "MUTAG_train_data_list_0_dropped.pkl", "rb") as f:
-    train_data_list_0 = pickle.load(f)
-
-with open(base_path + "MUTAG_test_data_list_dropped.pkl", "rb") as f:
-    test_data_list = pickle.load(f)
-
-with open(base_path + "MUTAG_test_data_list_1_dropped.pkl", "rb") as f:
-    test_data_list_1 = pickle.load(f)
-
-with open(base_path + "MUTAG_test_data_list_0_dropped.pkl", "rb") as f:
-    test_data_list_0 = pickle.load(f)
-
-with open(base_path + "MUTAG_train_avg_embedding_dict_0_dropped.pkl", 'rb') as f: 
-    avg_class_embedding_0 = pickle.load(f)
-
-with open(base_path + "MUTAG_train_avg_embedding_dict_1_dropped.pkl", 'rb') as f: 
-    avg_class_embedding_1 = pickle.load(f)
-
-#explainee_ref = ray.put(explainee)
-train_data_ref = ray.put(train_data_list + test_data_list)
-test_data_ref = ray.put(train_data_list_0 + test_data_list_0)
-
-# %%
-def train_function(config, target, explainee, train_data_ref, test_data_ref):
+def train_function(config, target, explainee, train_data_ref, test_data_ref, 
+                   avg_emb_target, avg_emb_not_target):
     
     train_data = train_data_ref
     test_data = test_data_ref
@@ -114,7 +66,11 @@ def train_function(config, target, explainee, train_data_ref, test_data_ref):
 
     # L1
     pred_loss_fn = egg_generic_losses.PredLossBatched(
-        target, explainee
+        target, explainee, avg_embed_targets=avg_emb_target
+    )
+
+    embed_dist_fn = egg_generic_losses.EmbDistGeneric(
+        explainee, avg_embed_targets=avg_emb_not_target
     )
 
     GED_fn = egg_generic_losses.GEDasMatchLoss(
@@ -155,19 +111,20 @@ def train_function(config, target, explainee, train_data_ref, test_data_ref):
             loss_1, _, _ = pred_loss_fn(gen_ex) 
             loss_1 = config["l1_weight"] * loss_1 # Lambda_1
 
+            loss_embed_not_target = (
+                -1 * config['embed_not_weight'] * embed_dist_fn(gen_ex)
+            )
+
             with torch.no_grad():
                 explainee_pred = F.softmax(explainee(obs_batch), dim=-1)
                 omega = (explainee_pred @ 
-                    target.to(explainee_pred.device) - 0.5
+                    target.to(explainee_pred.device) - 0.5 #Works for binary.
                 )
-
-            if config['var_egg_size']: 
-                egg_size = torch.tensor([
-                    graph.x.shape[0] + graph.edge_index.shape[1] 
-                    for graph in gen_ex.to_data_list()
-                ]).to(device)
-            else: 
+            
+            if config['use_egg_size']: 
                 egg_size = (gen_egg[0].shape[1] + gen_egg[2].shape[1])
+            else:
+                egg_size = 1
 
             # Compute L2. 
             loss_2 = GED_fn(*gen_egg, *obs_egg) / egg_size # / (gen_egg[0].shape[1] + gen_egg[2].shape[1])
@@ -180,7 +137,7 @@ def train_function(config, target, explainee, train_data_ref, test_data_ref):
                 edge_pen_fn(generator.AdjacencyMatrix.probs)
             )
 
-            loss = loss_1 + loss_3
+            loss = loss_1 + loss_3 + loss_embed_not_target
 
             loss = loss.mean()
 
@@ -235,11 +192,60 @@ def train_function(config, target, explainee, train_data_ref, test_data_ref):
         {"loss": loss.item(), 
          "mean_pred": mean_pred, 
          "mean_GED": mean_GED, 
-         "mean_Density": mean_Density}
+         "mean_Density": mean_Density, 
+         "tune_metric": mean_pred + mean_GED
+        }
     ) 
 
 if __name__ == '__main__':
+    # Meta-Data
+    device = torch.device(0)    
+    num_epochs = 50
 
+    # %%
+    # Load explainee model.
+    explainee = mutag_helper.GCN2(hidden_channels=64, node_features=5, num_classes=2)
+    explainee.to(device)
+    explainee.load_state_dict(torch.load(
+            "data/explainees/MUTAG/gcn_200_dropped.pt", 
+            map_location=device
+        ), 
+        strict=False
+    )
+    explainee.eval()
+
+    # %%
+    # Load cleaned datasets.
+    # See MUTAG.ipynb for code used to generate the data. 
+
+    base_path = "data/explainees/MUTAG/"
+
+    with open(base_path + "MUTAG_train_data_list_dropped.pkl", "rb") as f:
+        train_data_list = pickle.load(f)
+
+    with open(os.path.join(base_path, "MUTAG_train_data_list_1_dropped.pkl"), "rb") as f:
+        train_data_list_1 = pickle.load(f)
+
+    with open(base_path + "MUTAG_train_data_list_0_dropped.pkl", "rb") as f:
+        train_data_list_0 = pickle.load(f)
+
+    with open(base_path + "MUTAG_test_data_list_dropped.pkl", "rb") as f:
+        test_data_list = pickle.load(f)
+
+    with open(base_path + "MUTAG_test_data_list_1_dropped.pkl", "rb") as f:
+        test_data_list_1 = pickle.load(f)
+
+    with open(base_path + "MUTAG_test_data_list_0_dropped.pkl", "rb") as f:
+        test_data_list_0 = pickle.load(f)
+
+    with open(base_path + "MUTAG_train_avg_embedding_dict_0_dropped.pkl", 'rb') as f: 
+        avg_class_embedding_0 = pickle.load(f)
+
+    with open(base_path + "MUTAG_train_avg_embedding_dict_1_dropped.pkl", 'rb') as f: 
+        avg_class_embedding_1 = pickle.load(f)
+
+    train_data_ref = ray.put(train_data_list + test_data_list)
+    
     # Terminal Arguments
     parser = argparse.ArgumentParser() 
     parser.add_argument(
@@ -253,30 +259,34 @@ if __name__ == '__main__':
     target_selection = opt.target
     if target_selection:
         target = torch.tensor([0.0, 1.0])
+        test_data_ref = ray.put(train_data_list_1 + test_data_list_1)
+        avg_emb_target = avg_class_embedding_1
+        avg_emb_not_target = avg_class_embedding_0
     else: 
         target = torch.tensor([1.0, 0.0])
+        test_data_ref = ray.put(train_data_list_0 + test_data_list_0)
+        avg_emb_target = avg_class_embedding_0
+        avg_emb_not_target = avg_class_embedding_1
 
     config = {
         "max_node_size": tune.choice([5, 10, 20, 30]),
         "temp": tune.choice([0.1, 0.15, 0.2]), 
         "batch_size": tune.choice([16]), 
-        "lr": tune.choice([1e-4, 1e-3]),  
-        "lr_decay": tune.choice([0.1, 1.0]), 
+        "lr": tune.choice([1e-4, 1e-3, 1e-2]),  
+        "lr_decay": tune.choice([0.0, 0.1, 1.0]), 
         "l1_weight": tune.choice([0.0, 0.5, 1.0]), 
         "l2_weight": tune.choice([0.0, 0.5, 1.0]),
-        "var_egg_size": tune.choice([True, False]),
+        "emb_not_weight": tune.choice([0.0, 0.5, 1.0]), 
         "edge_pen_weight": tune.choice([0.0, 1e-4, 1e-2]), 
-        "budget": tune.choice([0.0, 1.0, 2.0])
+        "budget": tune.choice([0.0, 1.0, 2.0]), 
+        "use_egg_size": tune.choice([True, False])
     }
 
     tune_scheduler = ASHAScheduler(
-        metric="mean_pred", 
+        metric="tune_metric", 
         mode="max",
         max_t=10, 
     )
-
-    # print(type(train_data_ref))
-    # print(ray.get(train_data_ref))
 
     result = tune.run(
         tune.with_parameters(
@@ -284,7 +294,9 @@ if __name__ == '__main__':
             target=target, 
             explainee=explainee, 
             train_data_ref=train_data_ref, 
-            test_data_ref=test_data_ref
+            test_data_ref=test_data_ref,
+            avg_emb_target=avg_emb_target, 
+            avg_emb_not_target=avg_emb_not_target
         ), 
         config=config,
         num_samples=100,  
@@ -293,7 +305,5 @@ if __name__ == '__main__':
     )
 
     df = result.results_df
-    print(df)
-    df_name = "MUTAG_tuned_results" + target_selection + ".csv"
-    df.to_csv(df_name, index=False)
+    df_name = "MUTAG_tuned_results_dropped" + target_selection + ".csv"
     df.to_csv("results/MUTAG/" + df_name, index=False)
