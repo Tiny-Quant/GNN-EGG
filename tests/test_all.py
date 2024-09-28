@@ -15,6 +15,7 @@ import torch.nn.functional as F
 import torch_geometric as pyg
 from torch_geometric.utils import contains_isolated_nodes, contains_self_loops
 from torch_geometric.data import Batch
+import pygmtools as pygm
 
 from egg_models import egg_generic
 from egg_models import egg_generic_losses
@@ -370,6 +371,90 @@ def EggGenericTrainerFull_ceograph(
 
     return mock_trainer
 
+@pytest.fixture
+def basic_graph():
+
+    X_base = torch.tensor(
+        [
+            [1.0, 0.0, 0.0], 
+            [1.0, 0.0, 0.0], 
+            [1.0, 0.0, 0.0], 
+            [0.0, 1.0, 0.0], 
+            [0.0, 0.0, 1.0]
+        ]
+    )
+
+    A_base = torch.tensor(
+        [
+            [0, 0, 1, 1, 2, 2, 2, 3, 4, 4], 
+            [1, 4, 0, 2, 1, 3, 4, 2, 0, 2]
+        ]
+    )
+
+    E_base = torch.tensor(
+        [
+            [1.0, 0.0, 0.0], 
+            [0.0, 1.0, 0.0], 
+            [1.0, 0.0, 0.0], 
+            [1.0, 0.0, 0.0], 
+            [1.0, 0.0, 0.0], 
+            [0.0, 0.0, 1.0], 
+            [0.0, 0.0, 1.0], 
+            [0.0, 0.0, 1.0], 
+            [0.0, 1.0, 0.0], 
+            [0.0, 0.0, 1.0], 
+        ]
+    )
+
+    return pyg.data.Batch(x=X_base, edge_index=A_base, edge_attr=E_base)
+
+@pytest.fixture
+def basic_graph_extended():
+
+    X_base = torch.tensor(
+        [
+            [1.0, 0.0, 0.0], 
+            [1.0, 0.0, 0.0], 
+            [1.0, 0.0, 0.0], 
+            [0.0, 1.0, 0.0], 
+            [0.0, 0.0, 1.0],
+            [0.0, 1.0, 0.0], 
+            [0.0, 0.0, 1.0], 
+            [1.0, 0.0 ,0.0], 
+        ]
+    )
+
+    A_base = torch.tensor(
+        [
+            [0, 0, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 6, 6, 7, 7], 
+            [1, 4, 0, 2, 1, 3, 4, 2, 4, 5, 0, 2, 3, 3, 0, 4, 0, 2]
+        ]
+    )
+
+    E_base = torch.tensor(
+        [
+            [1.0, 0.0, 0.0], 
+            [0.0, 1.0, 0.0], 
+            [1.0, 0.0, 0.0], 
+            [1.0, 0.0, 0.0], 
+            [1.0, 0.0, 0.0], 
+            [0.0, 0.0, 1.0], 
+            [0.0, 0.0, 1.0], 
+            [0.0, 0.0, 1.0], 
+            [0.0, 0.0, 1.0], 
+            [0.0, 0.0, 1.0], 
+            [0.0, 1.0, 0.0], 
+            [0.0, 0.0, 1.0], 
+            [1.0, 0.0, 0.0], 
+            [0.0, 1.0, 0.0], 
+            [1.0, 0.0, 0.0], 
+            [1.0, 0.0, 0.0], 
+            [1.0, 0.0, 0.0], 
+            [0.0, 0.0, 1.0], 
+        ]
+    )
+    return pyg.data.Batch(x=X_base, edge_index=A_base, edge_attr=E_base)
+
 # %% Helper Functions
 def check_grads_exist(loss: torch.tensor, model: torch.nn.Module, retain=False): 
     """
@@ -464,6 +549,39 @@ class GCN(torch.nn.Module):
         x = F.softmax(x, dim=-1)
         
         return x
+
+def affinity_fn(feat1: torch.tensor, feat2: torch.tensor) -> torch.tensor:
+        feat1_norm = F.normalize(feat1, p=2, dim=-1)
+        feat2_norm = F.normalize(feat2, p=2, dim=-1)
+
+        cos_sim_mat = torch.einsum('bij, bkj -> bik', 
+                                   feat1_norm, feat2_norm)
+
+        return -1 * (1 - cos_sim_mat)
+
+def create_aff_mat(G1: pyg.data.Batch, G2: pyg.data.Batch) -> torch.tensor:
+
+    n1 = G1.x.size(0) 
+    ne1 = G1.edge_index.size(1)
+    n2 = G2.x.size(0) 
+    ne2 = G2.edge_index.size(1)
+
+    aff_mat = pygm.utils.build_aff_mat(
+        node_feat1=G1.x, 
+        edge_feat1=G1.edge_attr, 
+        connectivity1=G1.edge_index.transpose(0, 1), 
+        node_feat2=G2.x, 
+        edge_feat2=G2.edge_attr, 
+        connectivity2=G2.edge_index.transpose(0, 1), 
+        node_aff_fn=affinity_fn, 
+        edge_aff_fn=affinity_fn,
+        n1=n1, 
+        ne1=ne1, 
+        n2=n2,
+        ne2=ne2
+    ) 
+
+    return aff_mat
 
 # %% Tests
 def test_gen_shapes(generator, gen_output):
@@ -1164,3 +1282,79 @@ def test_ceograph_trainer_full(EggGenericTrainerFull_ceograph):
             assert param.grad is not None, (
                 f"Parameter '{name}' does not have gradients"
             )
+
+# def test_GED_reversible(basic_graph, basic_graph_extended):
+    
+#     dist_2_1 = 0.
+#     dist_1_2 = 0.
+#     for i in range(100):
+#         n1 = basic_graph.x.size(0)
+#         ne1 = basic_graph.edge_index.size(0)
+#         n2 = basic_graph_extended.x.size(0)
+#         ne2 = basic_graph_extended.edge_index.size(0)
+
+#         aff_mat_G2_to_G1 = create_aff_mat(basic_graph, basic_graph_extended)
+#         aff_mat_G1_to_G2 = create_aff_mat(basic_graph_extended, basic_graph)
+
+#         assert not torch.allclose(aff_mat_G2_to_G1, aff_mat_G1_to_G2), f"On index {i}"
+
+#         GED_2_to_1 = (
+#             -1 * pygm.utils.compute_affinity_score(
+#                 pygm.hungarian(pygm.ngm(aff_mat_G2_to_G1, n1, n2)), 
+#                 aff_mat_G2_to_G1
+#             )
+#         )
+#         dist_2_1 += GED_2_to_1
+
+#         GED_1_to_2 = (
+#             -1 * pygm.utils.compute_affinity_score(
+#                 pygm.hungarian(pygm.ngm(aff_mat_G2_to_G1, n2, n1)), 
+#                 aff_mat_G2_to_G1
+#             )
+#         )
+#         dist_1_2 += GED_1_to_2
+
+#     assert torch.allclose(dist_2_1 / 100, dist_1_2 / 100, rtol=1e-2)
+
+def test_GED_del_zero(basic_graph, basic_graph_extended):
+
+    aff_mat_G2_to_G1 = create_aff_mat(basic_graph, basic_graph_extended)
+    aff_mat_G1_to_G2 = create_aff_mat(basic_graph_extended, basic_graph)
+
+    true_match_2_to_1 = torch.tensor(
+        [
+            [1., 0., 0., 0., 0., 0., 0., 0.],
+            [0., 1., 0., 0., 0., 0., 0., 0.],
+            [0., 0., 1., 0., 0., 0., 0., 0.],
+            [0., 0., 0., 1., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 1., 0., 0., 0.],
+        ]
+    )
+
+    GED_2_to_1 = (
+        -1 * pygm.utils.compute_affinity_score(
+            true_match_2_to_1, aff_mat_G2_to_G1
+        )
+    )
+
+    true_match_1_to_2 = torch.tensor(
+        [
+            [1., 0., 0., 0., 0.],
+            [0., 1., 0., 0., 0.],
+            [0., 0., 1., 0., 0.],
+            [0., 0., 0., 1., 0.],
+            [0., 0., 0., 0., 1.],
+            [0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0.],
+            [0., 0., 0., 0., 0.],
+        ]
+    )
+
+    GED_1_to_2 = (
+        -1 * pygm.utils.compute_affinity_score(
+            true_match_1_to_2, aff_mat_G1_to_G2
+        )
+    )
+
+    assert torch.allclose(GED_2_to_1, GED_1_to_2)
+    
