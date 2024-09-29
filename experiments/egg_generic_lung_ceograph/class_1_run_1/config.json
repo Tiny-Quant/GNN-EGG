@@ -13,8 +13,10 @@
     "MAX_NODE_SIZE": 30, 
     "temp": 0.15, 
     "pred_loss_weight": 1.0, 
-    "edge_loss_weight": 0.0, 
-    "struct_loss_weight": 1.0, 
-    "dis_imp_ratio": 10.0, 
-    "QAP_solver_name": "ngm" 
+    "embed_other_weight": 1.0, 
+    "edge_loss_weight": 0.00001, 
+    "struct_loss_weight": 10.0, 
+    "dis_imp_ratio": 100.0, 
+    "QAP_solver_name": "ngm",
+    "use_egg_size": false
 }
