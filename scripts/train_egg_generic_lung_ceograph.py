@@ -157,7 +157,7 @@ if __name__ == '__main__':
         QAP_solver = getattr(pygm, QAP_solver_name, None)
 
     # Define trainer.  
-    trainer = SpecificTrainer(
+    trainer = EggGenericTrainer(
         model=generator, explainee=explainee, 
         target=target, uninfo_target=uninfo_target, 
         avg_embed_targets=avg_class_embedding, 

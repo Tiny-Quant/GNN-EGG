@@ -116,7 +116,6 @@ def egg_to_ex(generated: dict):
     data_list = [
         clean_gen_graph(pyg.data.Data(x = X, edge_index = A, edge_attr = E))
         for (X, A, E) in zip(X.unbind(), edge_index.unbind(), E.unbind())
-        
     ]
 
     return pyg.data.Batch.from_data_list(data_list)
