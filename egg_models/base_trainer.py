@@ -19,8 +19,8 @@ class BaseTrainer:
     def __init__(self, 
                  model: nn.Module, 
                  optimizer: torch.optim.Optimizer, 
-                 tensorboard_path: str, 
-                 checkpoint_path: str, 
+                 tensorboard_path=None, 
+                 checkpoint_path=None, 
                  save_every=1):
 
         self.model = model
@@ -29,7 +29,9 @@ class BaseTrainer:
         self.tensorboard_path = tensorboard_path
         self.checkpoint_path = checkpoint_path
         self.save_every = save_every
-        self.writer = SummaryWriter(self.tensorboard_path)
+
+        if self.tensorboard_path is not None:
+            self.writer = SummaryWriter(self.tensorboard_path)
 
         self.scaler = torch.cuda.amp.GradScaler(init_scale=3_000)
 
@@ -89,8 +91,10 @@ class BaseTrainer:
             else: 
                 result = self.train_one_epoch()
 
-            self.per_epoch_logger(result, epoch)
+            if self.tensorboard_path is not None: 
+                self.per_epoch_logger(result, epoch)
 
-            self.save_checkpoint(epoch, total_epochs)
+            if self.checkpoint_path is not None: 
+                self.save_checkpoint(epoch, total_epochs)
 
 

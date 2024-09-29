@@ -176,8 +176,8 @@ class EggGenericTrainer(BaseTrainer):
                  uninfo_target: torch.Tensor, 
                  obs_data_list: list, 
                  optimizer: torch.optim.Optimizer, 
-                 tensorboard_path: str, 
-                 checkpoint_path: str,
+                 tensorboard_path: Optional[str]=None, 
+                 checkpoint_path: Optional[str]=None,
                  save_every=1, 
                  avg_embed_targets: Optional[Dict[str, torch.Tensor]]=None, 
                  # TODO: Extend to multi-class 
@@ -414,11 +414,9 @@ class EggGenericTrainer(BaseTrainer):
         embed_dist = -1 * self.embed_dist_fn(gen_ex_format).mean()
 
         edge_loss = self.edge_loss_fn(self.model.AdjacencyMatrix.probs)
-
         struct_loss = self.struct_loss_fn(gen_egg_format, obs_egg_format, 
                                           gen_ex_format, 
                                           obs_batch, gen_act, gen_act_batch)
-
         if self.reinforce_struct:
             struct_loss = struct_loss.mean() + (
                 ((1 / struct_loss) @ -generated['C_x_logLik']).sum() + 
