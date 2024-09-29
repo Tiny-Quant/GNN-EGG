@@ -197,7 +197,7 @@ class EggGenericTrainer(BaseTrainer):
                  repeat_sampling=False, 
                  batches_per_param=1, 
                  grad_norm: Optional[float]=None, 
-                 use_embeddings=True, 
+                 use_embeddings=False,  
                  auto_mixed_precision=False, 
                  retain_comp_graph=False):
 

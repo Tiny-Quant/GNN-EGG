@@ -19,6 +19,7 @@ import dill as pickle
 import argparse
 import json
 import numpy as np
+from functools import partial 
 
 from egg_models.egg_generic import EggGeneric, EggGenericTrainer
 
@@ -99,19 +100,21 @@ if __name__ == '__main__':
     ############################################################################
     uninfo_target = torch.tensor([0.5, 0.5])
 
+    with open("data/slides/LUDA/train_avg_embedding_ad.pkl", 'rb') as f:
+        avg_ad_embedding = pickle.load(f)
+
+    with open("data/slides/LUSC/train_avg_embedding_sc.pkl", 'rb') as f:
+        avg_sc_embedding = pickle.load(f)
+
     if target_class == 0: 
         target = torch.tensor([1., 0.])
-        PATH_TO_CLASS_EMBEDDINGS = (
-            "data/slides/LUDA/train_avg_embedding_ad.pkl"
-        )
+        avg_class_embedding = avg_ad_embedding
+        avg_embed_other_class = avg_sc_embedding
+
     elif target_class == 1:
         target = torch.tensor([0., 1.])
-        PATH_TO_CLASS_EMBEDDINGS = (
-            "data/slides/LUSC/train_avg_embedding_sc.pkl"
-        )
-
-    with open(PATH_TO_CLASS_EMBEDDINGS, 'rb') as f:
-        avg_class_embedding = pickle.load(f)
+        avg_class_embedding = avg_sc_embedding
+        avg_embed_other_class = avg_ad_embedding
     
     ############################################################################
     ## Generator Parameters ####################################################
@@ -127,76 +130,7 @@ if __name__ == '__main__':
     CONT_EDGE_INDICES=(slice(1, 3), ) # 0 is connection type and is deterministic. 
     DIS_EDGE_INDICES=(3, )
 
-    ############################################################################
-    ## Data Processing Functions ###############################################
-    ############################################################################
-    class SpecificTrainer(EggGenericTrainer): 
-        def __init__(self, 
-                    model: EggGeneric, 
-                    explainee: nn.Module, 
-                    target: torch.Tensor, 
-                    uninfo_target: torch.Tensor, 
-                    obs_data_list: List, 
-                    optimizer: torch.optim.Optimizer, 
-                    loss_term_weights: torch.Tensor, 
-                    tensorboard_path: str, 
-                    checkpoint_path: str,
-                    save_every=1, 
-                    avg_embed_targets: Optional[Dict[str, torch.Tensor]]=None, 
-                    cont_node_indices: Optional[Tuple]=None, 
-                    dis_node_indices: Optional[Tuple]=None,
-                    cont_edge_indices: Optional[Tuple]=None, 
-                    dis_edge_indices: Optional[Tuple]=None, 
-                    QAP_solver=pygm.rrwm, 
-                    dis_imp_ratio: float=1.0, 
-                    edge_budget=None, 
-                    reinforce_pred=False, 
-                    reinforce_struct=False,
-                    sub_sampler="default", 
-                    repeat_sampling=False, 
-                    batches_per_param=1,
-                    auto_mixed_precision=False): 
-            super().__init__(
-                model=model, explainee=explainee, 
-                target=target, uninfo_target=uninfo_target,
-                obs_data_list=obs_data_list, optimizer=optimizer, 
-                loss_term_weights=loss_term_weights,
-                tensorboard_path=tensorboard_path, 
-                checkpoint_path=checkpoint_path, save_every=save_every,
-                avg_embed_targets=avg_embed_targets, 
-                cont_node_indices=cont_node_indices,
-                dis_node_indices=dis_node_indices, 
-                cont_edge_indices=cont_edge_indices,
-                dis_edge_indices=dis_edge_indices, 
-                dis_imp_ratio=dis_imp_ratio, 
-                QAP_solver=QAP_solver, 
-                edge_budget=edge_budget, 
-                reinforce_pred=reinforce_pred,reinforce_struct=reinforce_struct, 
-                sub_sampler=sub_sampler, repeat_sampling=repeat_sampling,
-                batches_per_param=batches_per_param, 
-                auto_mixed_precision=auto_mixed_precision, 
-            )
 
-        def egg_to_ex(self, generated: dict):
-            """
-            """
-            return ceograph.egg_to_ex(generated)
-
-        def ex_to_egg(self, obs_batch) -> List[torch.tensor]:
-            """
-            """
-            return ceograph.ex_to_egg(obs_batch, 
-                                      self.model.dis_node_feats[0])
-
-        def egg_to_egg(self, generated: dict) -> List[torch.tensor]: 
-            """
-            Post-processor to fix formatting for loss terms.
-            """
-            return ceograph.egg_to_egg(generated)
-
-    ############################################################################
-    ## No changes necessary below. #############################################
-    ############################################################################
     generator = EggGeneric(max_node_size=MAX_NODE_SIZE, 
                            cont_node_feats=CONT_NODE_FEATS,
                            dis_node_feats=DIS_NODE_FEATS, 
@@ -227,8 +161,10 @@ if __name__ == '__main__':
         model=generator, explainee=explainee, 
         target=target, uninfo_target=uninfo_target, 
         avg_embed_targets=avg_class_embedding, 
+        avg_embed_other_class=avg_embed_other_class, 
         loss_term_weights=torch.tensor(
-            [pred_loss_weight, edge_loss_weight, struct_loss_weight]
+            [pred_loss_weight, embed_other_weight, 
+             edge_loss_weight, struct_loss_weight]
         ), 
         obs_data_list=obs_data_list, 
         sub_sampler=sub_sampling_strat, 
@@ -238,6 +174,7 @@ if __name__ == '__main__':
         dis_edge_indices=DIS_EDGE_INDICES, 
         dis_imp_ratio=dis_imp_ratio, 
         QAP_solver=QAP_solver, 
+        use_egg_size=use_egg_size, 
         optimizer=optimizer, 
         batches_per_param=batches_per_param,
         auto_mixed_precision=auto_mixed_precision, 
@@ -245,5 +182,12 @@ if __name__ == '__main__':
         save_every=save_every
     )
     
+    ############################################################################
+    ## Data Processing Functions ###############################################
+    ############################################################################
+    trainer.egg_to_ex = ceograph.egg_to_ex
+    trainer.ex_to_egg = partial(ceograph.ex_to_egg, num_cell_types=6)
+    trainer.egg_to_egg = ceograph.egg_to_egg
+
     trainer.train(num_epochs, opt.resume_path, None)
     
