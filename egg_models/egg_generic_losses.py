@@ -396,7 +396,8 @@ class StructuralLoss(nn.Module):
                  explainee: nn.Module, 
                  gamma: torch.Tensor, 
                  target: torch.Tensor, 
-                 criterion = nn.CrossEntropyLoss(reduction='none'), 
+                 criterion=nn.CrossEntropyLoss(reduction='none'), 
+                 use_egg_size=False, 
                  use_embeddings=False, 
                  uninfo_pen=-1): 
         super(StructuralLoss, self).__init__()
@@ -406,6 +407,7 @@ class StructuralLoss(nn.Module):
         self.gamma = gamma
         self.target = target
         self.criterion = criterion
+        self.use_egg_size = use_egg_size
         self.use_embeddings = use_embeddings
         self.uninfo_pen = uninfo_pen # TODO: Remove argument. 
 
@@ -451,11 +453,13 @@ class StructuralLoss(nn.Module):
                         to(explainee_pred.device)
                 )
             )
-
-            egg_size = torch.tensor([
-                graph.x.shape[0] + graph.edge_index.shape[1] 
-                for graph in gen_ex.to_data_list()
-            ]).to(approx_GED.device)
+            if self.use_egg_size:
+                egg_size = torch.tensor([
+                    graph.x.shape[0] + graph.edge_index.shape[1] 
+                    for graph in gen_ex.to_data_list()
+                ]).to(approx_GED.device)
+            else: 
+                egg_size = 1.0
 
         return omega * (approx_GED / egg_size + embed_loss)
         

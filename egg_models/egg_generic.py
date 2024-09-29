@@ -192,6 +192,7 @@ class EggGenericTrainer(BaseTrainer):
                  edge_budget=None, 
                  reinforce_pred=False, 
                  reinforce_struct=False,
+                 use_egg_size=False, 
                  sub_sampler="default", 
                  repeat_sampling=False, 
                  batches_per_param=1, 
@@ -253,6 +254,7 @@ class EggGenericTrainer(BaseTrainer):
 
         self.struct_loss_fn = StructuralLoss(self.GED_fn, self.explainee, 
                                              self.gamma, self.target, 
+                                             use_egg_size=use_egg_size, 
                                              use_embeddings=use_embeddings)
 
         self.retain_comp_graph = retain_comp_graph
