@@ -1,0 +1,19 @@
+{
+    "num_epochs": 10, 
+    "optimizer_name": "RMSprop", 
+    "learning_rate": 0.001, 
+    "auto_mixed_precision": false, 
+    "tensorboard_path": "experiments/egg_generic_lung_ceograph/class_0_run_noGED/tensorboard", 
+    "checkpoint_path": "experiments/egg_generic_lung_ceograph/class_0_run_noGED/checkpoints", 
+    "save_every": 1, 
+    "target_class": 0, 
+    "sub_sampling_strat": null, 
+    "batch_size": 2, 
+    "batches_per_param": 10,   
+    "MAX_NODE_SIZE": 30, 
+    "temp": 0.15, 
+    "pred_loss_weight": 1.0, 
+    "embed_other_weight": 1.0, 
+    "edge_loss_weight": 0.00001, 
+    "struct_loss_weight": 0.0
+}
