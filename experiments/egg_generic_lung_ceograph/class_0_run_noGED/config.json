@@ -16,5 +16,7 @@
     "embed_other_weight": 1.0, 
     "edge_loss_weight": 0.00001, 
     "struct_loss_weight": 0.0, 
-    "QAP_solver_name": "ngm"
+    "dis_imp_ratio": 100.0, 
+    "QAP_solver_name": "ngm",  
+    "use_egg_size": false
 }
