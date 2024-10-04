@@ -10,7 +10,7 @@
     "sub_sampling_strat": null, 
     "batch_size": 2, 
     "batches_per_param": 10, 
-    "MAX_NODE_SIZE": 10, 
+    "MAX_NODE_SIZE": 5, 
     "temp": 0.15, 
     "pred_loss_weight": 1.0, 
     "embed_other_weight": 1.0, 

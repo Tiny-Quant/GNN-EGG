@@ -14,7 +14,7 @@
     "temp": 0.15, 
     "pred_loss_weight": 1.0, 
     "embed_other_weight": 1.0, 
-    "edge_loss_weight": 0.000001, 
+    "edge_loss_weight": 0.00001, 
     "struct_loss_weight": 10.0, 
     "dis_imp_ratio": 100.0, 
     "QAP_solver_name": "ngm",
