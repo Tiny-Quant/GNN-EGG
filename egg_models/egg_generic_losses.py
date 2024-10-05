@@ -106,20 +106,11 @@ class PredLossBatched(nn.Module):
                 activation_hook(self.explainee, self.avg_embed_targets.keys())
             ) 
             explainee_pred = F.softmax(self.explainee(batch), dim=-1)
-            print(f"2: {explainee_pred}")
-            print(f"{explainee_pred.shape}")
-            # Check if model return is empty.
-            if explainee_pred.numel == 0:
-                explainee_pred = (
-                torch.ones_like(explainee_pred) / explainee_pred.shape[2]
-            )
-            print(f"3: {explainee_pred}")
 
             loss = self.criterion(explainee_pred, 
                                   (self.target.expand_as(explainee_pred).
                                     to(explainee_pred.device))
             )
-            
             loss = loss + dict_cos_dist(activations, self.avg_embed_targets, 
                                         batch_indices1=batch.batch)
 

@@ -449,10 +449,19 @@ class EggGenericTrainer(BaseTrainer):
                 gen_egg_format = self.egg_to_egg(generated)
                 obs_egg_format = self.ex_to_egg(obs_batch)
 
-                loss_terms = self.compute_loss_terms(generated, obs_batch, 
-                                                    gen_ex_format, 
-                                                    gen_egg_format,  
-                                                    obs_egg_format)
+                try: 
+                    loss_terms = self.compute_loss_terms(generated, obs_batch, 
+                                                        gen_ex_format, 
+                                                        gen_egg_format,  
+                                                        obs_egg_format)
+                except Exception as e:
+                    print(f"Error {e} encounter during batch {i}. Skipping.")
+                    del generated
+                    del gen_ex_format
+                    del gen_egg_format
+                    del obs_egg_format
+                    torch.cuda.empty_cache()
+                    continue
 
                 if self.auto_mixed_precision:
                     # Gradient accumulation scaling. 
