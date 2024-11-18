@@ -15,3 +15,9 @@ checkpoints/
 tensorboard/
 runs/
 profile.txt
+
+archive/ 
+manuscript/ 
+notebooks/ 
+results/Class_0_censor
+results/Class_1_oral_cancer_or_death
