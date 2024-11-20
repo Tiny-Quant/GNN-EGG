@@ -13,8 +13,6 @@ services:
       # Map a port on the host to a port on the container.
       - 8888:8888
 
-    command: sleep infinity
-
     deploy:
       resources:
         reservations:
