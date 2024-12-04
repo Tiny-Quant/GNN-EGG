@@ -1,0 +1,22 @@
+services:
+
+  devcontainer:
+    build:
+      context: .. # Look up a directory.
+      dockerfile: .devcontainer/dockerfile
+
+    volumes:
+      # Mount one directory up to the container's repo folder.
+      - ../:/repo
+  
+    ports:
+      # Map a port on the host to a port on the container.
+      - 8888:8888
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
