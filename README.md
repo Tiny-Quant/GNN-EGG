@@ -1,6 +1,6 @@
-# GNN-EGG: Graph Neural Network Explanations via Graph Generation
+<h1 align="center">GNN-EGG: Graph Neural Network Explanations via Graph Generation</h1>
 
-## Abstract
+## Introduction
 Abstract— Graph Neural Networks (GNNs) provide a
 means for modeling inherently graphical data, such as
 transportation, social, and molecular networks, but also
@@ -42,7 +42,9 @@ docker compose up
 
 Then simply click the jupyter link and re-run the notebook. 
 
-## Demo Explanation 
+## Demo 
+
+![](demo.png)
 
 ## Acknowledgement
 
