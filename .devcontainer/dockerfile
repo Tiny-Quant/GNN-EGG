@@ -9,8 +9,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
-    build-essential bash wget \
-# For cv2
+    build-essential bash wget vim \
+    # For cv2
     ffmpeg libsm6 libxext6 \ 
     bzip2 ca-certificates unzip locales && \ 
     locale-gen en_US.UTF-8 && \
