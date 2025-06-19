@@ -1,7 +1,7 @@
 {
     "name": "${localWorkspaceFolderBasename}",
     "dockerComposeFile": "docker-compose.yml", 
-    "service": "gnn-egg",
+    "service": "devcontainer",
     "workspaceFolder": "/repo", 
     "customizations": {
         "vscode": {
