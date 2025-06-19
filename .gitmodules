@@ -1,0 +1,6 @@
+[submodule "GNNInterpreter"]
+	path = GNNInterpreter
+	url = git@github.com:yolandalalala/GNNInterpreter.git
+[submodule "XGNN-impl"]
+	path = XGNN-impl
+	url = git@github.com:for-just-we/XGNN-impl.git
