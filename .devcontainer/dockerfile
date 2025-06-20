@@ -10,11 +10,12 @@ RUN apt-get update && \
     apt-get upgrade -y && \
     apt-get install -y --no-install-recommends \
     build-essential bash wget vim \
+    coreutils findutils \
     # For cv2
-    ffmpeg libsm6 libxext6 \ 
-    bzip2 ca-certificates unzip locales && \ 
+    ffmpeg libsm6 libxext6 \
+    bzip2 ca-certificates unzip locales && \
     locale-gen en_US.UTF-8 && \
-    update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 && \ 
+    update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* 
 
@@ -28,11 +29,11 @@ RUN pip install --upgrade pip
 RUN conda init bash
 
 # Create conda python environment.
-COPY egg-env-38.yml /repo/egg-env-38.yml
-RUN conda env create -f egg-env-38.yml && \
+COPY egg-env-38.yml /tmp/egg-env-38.yml
+RUN conda env create -f /tmp/egg-env-38.yml && \
     conda clean --all --yes && \ 
     echo "conda activate egg-env-38" >> ~/.bashrc
-ENV PATH=/opt/miniconda/envs/egg-env-38/bin:$Path
+ENV PATH=/opt/miniconda/envs/egg-env-38/bin:$PATH
 RUN pip install \ 
     pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv \
     -f https://data.pyg.org/whl/torch-2.4.0+cu124.html
@@ -49,9 +50,9 @@ EXPOSE 8888
 COPY . /repo/
 
 # Open Jupyter lab to MUTAG-EGG.
-CMD ["jupyter", "lab", \ 
-     "--ip=0.0.0.0", \
-     "--port=8888", \
-     "--no-browser", \
-     "--allow-root", \
-     "--notebook-dir=/repo/results/MUTAG"]
+# CMD ["jupyter", "lab", \ 
+#      "--ip=0.0.0.0", \
+#      "--port=8888", \
+#      "--no-browser", \
+#      "--allow-root", \
+#      "--notebook-dir=/repo/results/MUTAG"]
