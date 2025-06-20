@@ -4,3 +4,6 @@
 [submodule "XGNN-impl"]
 	path = XGNN-impl
 	url = git@github.com:for-just-we/XGNN-impl.git
+[submodule "gnn-xai-common"]
+	path = gnn-xai-common
+	url = git@github.com:yolandalalala/gnn-xai-common.git
