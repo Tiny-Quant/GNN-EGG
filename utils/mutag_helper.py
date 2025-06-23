@@ -10,7 +10,9 @@ from torch_geometric.nn import GCNConv
 from torch_geometric.nn import global_mean_pool
 from torch_geometric.utils import remove_isolated_nodes, remove_self_loops
 
+import pygmtools
 from pygmtools.utils import dense_to_sparse, build_batch
+pygmtools.set_backend('pytorch')
 
 from utils import misc
 
@@ -129,14 +131,16 @@ def edge_relaxer(graph: pyg.data.Data) -> pyg.data.Data:
     edge_index = pyg.utils.to_dense_adj(graph.edge_index)
     edge_index, edge_weights, _ = dense_to_sparse(edge_index)
     edge_index = edge_index.transpose(1, 2).squeeze(0)
+    graph.edge_index = edge_index
 
     edge_attr = graph.edge_attr
     # zero_pad = torch.zeros((edge_index.shape[1] - edge_attr.shape[0], 
     #                         edge_attr.shape[1])).to(edge_attr.device)
     # edge_attr = torch.cat((edge_attr, zero_pad), dim=0)
-    edge_attr = torch.cat((edge_attr, edge_weights.squeeze(0)), dim=-1)
-
-    graph.edge_index = edge_index
+    #edge_attr = torch.cat((edge_attr, edge_weights.squeeze(0)), dim=-1)
+    edge_attr = misc.concat_possible_none_tensors(
+        edge_attr, edge_weights.squeeze(0), dim=-1
+    )
     graph.edge_attr = edge_attr
 
     return graph
@@ -146,9 +150,9 @@ def ex_to_egg(obs_batch: pyg.data.Batch) -> List[torch.tensor]:
     Implementation of ex_to_egg for the trainer of an EggGeneric model 
     for MUTAG data. 
     """
-
+    
     data_list = [edge_relaxer(graph) for graph in obs_batch.to_data_list()] 
-
+    
     X_list = [graph.x for graph in data_list]
     A_list = [graph.edge_index for graph in data_list]
     E_list = [graph.edge_attr for graph in data_list]
