@@ -253,6 +253,9 @@ class GEDasMatchLoss(nn.Module):
         return: [b, n1, n2]
         """
 
+        feat1 = feat1.float() 
+        feat2 = feat2.float()
+        
         feat1_norm = F.normalize(feat1, p=2, dim=-1)
         feat2_norm = F.normalize(feat2, p=2, dim=-1)
 
