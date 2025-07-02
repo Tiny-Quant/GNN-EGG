@@ -72,33 +72,83 @@ class GCN2(torch.nn.Module):
 
         return h
 
+# def clean_gen_graph(gen: pyg.data.Data) -> pyg.data.Data: 
+#     """
+#     Removes self loops and isolated nodes. 
+#     """
+#     edge_index = gen.edge_index
+#     edge_attr = gen.edge_attr
+
+#     edge_index, edge_attr = remove_self_loops(edge_index, edge_attr)
+
+#     edge_index, edge_attr, mask = (
+#         remove_isolated_nodes(edge_index, edge_attr, num_nodes=gen.x.shape[0])
+#     )
+
+#     # Zero node features if all cleared. 
+#     if gen.x[mask].shape[0] == 0:
+#         x = gen.x * 0.0
+#     else: 
+#         x = gen.x[mask]
+
+#     gen_cleaned = pyg.data.Data(
+#         x = x, 
+#         edge_index = edge_index, 
+#         edge_attr = edge_attr,
+#     )
+
+#     return gen_cleaned
+
 def clean_gen_graph(gen: pyg.data.Data) -> pyg.data.Data: 
     """
-    Removes self loops and isolated nodes. 
+    Removes self-loops and isolated nodes from a PyG gen object.
+    Adjusts node features, edge index, edge attributes, and any other
+    node-level attributes like 'pos' or 'batch'.
     """
-    edge_index = gen.edge_index
-    edge_attr = gen.edge_attr
+    # Step 1: Remove self-loops
+    edge_index, edge_attr = remove_self_loops(gen.edge_index, gen.edge_attr)
 
-    edge_index, edge_attr = remove_self_loops(edge_index, edge_attr)
-
-    edge_index, edge_attr, mask = (
-        remove_isolated_nodes(edge_index, edge_attr, num_nodes=gen.x.shape[0])
+    # Step 2: Remove isolated nodes
+    edge_index, edge_attr, node_mask = remove_isolated_nodes(
+        edge_index, edge_attr, num_nodes=gen.num_nodes
     )
 
-    # Zero node features if all cleared. 
-    if gen.x[mask].shape[0] == 0:
-        x = gen.x * 0.0
-    else: 
-        x = gen.x[mask]
+    # Step 3: Handle all-isolated case (empty graph)
+    if node_mask.sum() == 0:
+        x = torch.zeros_like(gen.x)
+        new_gen = pyg.data.Data(
+            x=x, 
+            edge_index=torch.empty((2, 0), 
+            dtype=torch.long, device=x.device)
+        )
+        if edge_attr is not None:
+            new_gen.edge_attr = edge_attr.new_empty((0,))
+        return new_gen
 
-    gen_cleaned = pyg.data.Data(
-        x = x, 
-        edge_index = edge_index, 
-        edge_attr = edge_attr,
+    # Step 4: Reindex node indices in edge_index
+    new_index_map = -torch.ones(
+        gen.num_nodes, dtype=torch.long, device=edge_index.device
     )
+    new_index_map[node_mask] = torch.arange(
+        node_mask.sum(), device=edge_index.device
+    )
+    edge_index = new_index_map[edge_index]
 
-    return gen_cleaned
+    # Step 5: Build cleaned gen
+    new_gen = pyg.data.Data()
+    new_gen.edge_index = edge_index
+    new_gen.edge_attr = edge_attr
 
+    # Copy and filter node-level attributes
+    for key, value in gen.items():
+        if key in ['edge_index', 'edge_attr']:
+            continue
+        if isinstance(value, torch.Tensor) and value.size(0) == gen.num_nodes:
+            new_gen[key] = value[node_mask]
+        else:
+            new_gen[key] = value  # global attributes or unrelated
+
+    return new_gen
 
 def egg_to_ex(generated: dict):
     """
@@ -127,7 +177,7 @@ def edge_relaxer(graph: pyg.data.Data) -> pyg.data.Data:
     Coverts a sparse adjacency matrix to be fully connected and converts 
     the original edge indices to edge weights in the edge feature matrix. 
     """
-
+    
     edge_index = pyg.utils.to_dense_adj(graph.edge_index)
     edge_index, edge_weights, _ = dense_to_sparse(edge_index)
     edge_index = edge_index.transpose(1, 2).squeeze(0)
