@@ -15,6 +15,7 @@ checkpoints/
 tensorboard/
 runs/
 profile.txt
+experiments/tune/MUTAG/*
 
 archive/ 
 manuscript/ 

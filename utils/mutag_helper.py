@@ -8,7 +8,9 @@ import torch.nn.functional as F
 import torch_geometric as pyg
 from torch_geometric.nn import GCNConv
 from torch_geometric.nn import global_mean_pool
-from torch_geometric.utils import remove_isolated_nodes, remove_self_loops
+from torch_geometric.utils import (
+    remove_isolated_nodes, remove_self_loops, subgraph
+)
 
 import pygmtools
 from pygmtools.utils import dense_to_sparse, build_batch
@@ -126,13 +128,20 @@ def clean_gen_graph(gen: pyg.data.Data) -> pyg.data.Data:
         return new_gen
 
     # Step 4: Reindex node indices in edge_index
-    new_index_map = -torch.ones(
-        gen.num_nodes, dtype=torch.long, device=edge_index.device
+    # new_index_map = -torch.ones(
+    #     gen.num_nodes, dtype=torch.long, device=edge_index.device
+    # )
+    # new_index_map[node_mask] = torch.arange(
+    #     node_mask.sum(), device=edge_index.device
+    # )
+    # edge_index = new_index_map[edge_index]
+    edge_index, edge_attr = subgraph(
+        node_mask, 
+        edge_index=edge_index, 
+        edge_attr=edge_attr, 
+        relabel_nodes=True, 
+        num_nodes=gen.x.size(0)
     )
-    new_index_map[node_mask] = torch.arange(
-        node_mask.sum(), device=edge_index.device
-    )
-    edge_index = new_index_map[edge_index]
 
     # Step 5: Build cleaned gen
     new_gen = pyg.data.Data()
