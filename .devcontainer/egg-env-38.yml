@@ -220,7 +220,6 @@ dependencies:
       - ptyprocess==0.7.0
       - pure-eval==0.2.3
       - pycparser==2.22
-      - pyg-lib==0.4.0+pt24cu124
       - pygments==2.18.0
       - pygmtools==0.5.3
       - pytest==8.3.3
@@ -245,10 +244,6 @@ dependencies:
       - tifffile==2024.8.30
       - tinycss2==1.4.0
       - tomli==2.1.0
-      - torch-cluster==1.6.3+pt24cu124
-      - torch-scatter==2.1.2+pt24cu124
-      - torch-sparse==0.6.18+pt24cu124
-      - torch-spline-conv==1.2.2+pt24cu124
       - tornado==6.4.1
       - traitlets==5.14.3
       - types-python-dateutil==2.9.0.20241003

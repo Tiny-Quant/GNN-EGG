@@ -37,6 +37,7 @@ ENV PATH=/opt/miniconda/envs/egg-env-38/bin:$PATH
 RUN pip install \ 
     pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv \
     -f https://data.pyg.org/whl/torch-2.4.0+cu124.html
+RUN pip install ray[tune] ipywidgets
 
 # Set environment variables for locale
 ENV LANG=en_US.UTF-8
