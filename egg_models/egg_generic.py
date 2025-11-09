@@ -267,6 +267,8 @@ class EggGenericTrainer(BaseTrainer):
         if generated['dis_node_feats'] is not None: 
             X = misc.concat_one_hot_to_labels(generated['dis_node_feats'], 
                                               indices=self.model.dis_node_feats) 
+        else: 
+            X = None
         
         if generated['cont_node_feats'] is not None: 
             X = misc.concat_possible_none_tensors(generated['cont_node_feats'], 
