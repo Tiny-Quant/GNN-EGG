@@ -114,6 +114,7 @@ class GenericGNNEggTrainer(EggGenericTrainer):
             if adj_indices.numel() > 0:
                 adj[adj_indices[0], adj_indices[1]] = 1.0
 
+            flat_edge_attr = None
             if self.edge_feature_dim > 0:
                 dense_attr = torch.zeros(
                     (max_nodes, max_nodes, self.edge_feature_dim), device=device
@@ -127,19 +128,15 @@ class GenericGNNEggTrainer(EggGenericTrainer):
                         )
                     if adj_indices.numel() > 0:
                         dense_attr[adj_indices[0], adj_indices[1]] = edge_attr
-            else:
-                dense_attr = torch.zeros(
-                    (max_nodes, max_nodes, 0), device=device
-                )
+                flat_edge_attr = dense_attr.view(max_nodes ** 2, self.edge_feature_dim)
 
-            if self.edge_feature_dim > 0:
-                flat_edge_attr = dense_attr.view(max_nodes ** 2, -1)
-                adjacency_weights = adj.view(max_nodes ** 2, 1)
-                obs_E.append(
-                    torch.cat([flat_edge_attr, adjacency_weights], dim=-1)
-                )
+            adjacency_weights = adj.view(max_nodes ** 2, 1)
+            if flat_edge_attr is not None:
+                edge_features = torch.cat([flat_edge_attr, adjacency_weights], dim=-1)
             else:
-                obs_E.append(adj.view(max_nodes ** 2))
+                edge_features = adjacency_weights
+
+            obs_E.append(edge_features)
 
         obs_X_tensor = torch.stack(obs_X)
         obs_E_tensor = torch.stack(obs_E)
