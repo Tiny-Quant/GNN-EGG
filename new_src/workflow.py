@@ -14,10 +14,10 @@ from egg_models.egg_generic import EggGeneric
 from .config import ExperimentConfig, LossTermConfig
 from .data import (
     DatasetSplits,
+    GeneratorAdapter,
     infer_feature_dimensions,
     load_dataset,
     make_loaders,
-    max_nodes,
     stratified_split,
 )
 from .explainee import GeneralGCN, class_average_embeddings, train_explainee
@@ -143,35 +143,48 @@ class GNNEggExperiment:
         edge_feature_dim: int,
     ) -> EggGeneric:
         gen_cfg = self.config.generator
-        max_node_size = gen_cfg.max_node_size or max_nodes(splits.train)
-        # largest_graph = max_nodes(splits.train)
-        # if gen_cfg.max_node_size is None:
-        #     max_node_size = largest_graph
-        # else:
-        #     if gen_cfg.max_node_size < largest_graph:
-        #         raise ValueError(
-        #             "GeneratorConfig.max_node_size "
-        #             f"({gen_cfg.max_node_size}) is smaller than the largest "
-        #             f"training graph ({largest_graph}). Increase the value "
-        #             "or leave it unset to auto-detect."
-        #         )
-        #     max_node_size = gen_cfg.max_node_size
-        node_feats = (
-            gen_cfg.cont_node_feats
-            if gen_cfg.cont_node_feats is not None
-            else node_feature_dim
-        )
-        edge_feats = (
-            gen_cfg.cont_edge_feats
-            if gen_cfg.cont_edge_feats is not None
-            else (edge_feature_dim if edge_feature_dim > 0 else None)
-        )
+        adapter = GeneratorAdapter(splits.train)
+        spec = adapter.spec
+
+        largest_graph = spec.max_nodes
+        if gen_cfg.max_node_size is None:
+            max_node_size = largest_graph
+        else:
+            if gen_cfg.max_node_size < largest_graph:
+                raise ValueError(
+                    "GeneratorConfig.max_node_size "
+                    f"({gen_cfg.max_node_size}) is smaller than the largest "
+                    f"training graph ({largest_graph}). Increase the value "
+                    "or leave it unset to auto-detect."
+                )
+            max_node_size = gen_cfg.max_node_size
+
+        node_feats = gen_cfg.cont_node_feats
+        if node_feats is None:
+            node_feats = spec.num_cont_node_feats or (node_feature_dim if node_feature_dim > 0 else None)
+        if node_feats == 0:
+            node_feats = None
+
+        dis_node_feats = gen_cfg.dis_node_feats
+        if dis_node_feats is None:
+            dis_node_feats = spec.dis_node_blocks if spec.dis_node_blocks else None
+
+        edge_feats = gen_cfg.cont_edge_feats
+        if edge_feats is None:
+            edge_feats = spec.num_cont_edge_feats or (edge_feature_dim if edge_feature_dim > 0 else None)
+        if edge_feats == 0:
+            edge_feats = None
+
+        dis_edge_feats = gen_cfg.dis_edge_feats
+        if dis_edge_feats is None:
+            dis_edge_feats = spec.dis_edge_blocks if spec.dis_edge_blocks else None
+
         generator = EggGeneric(
             max_node_size=max_node_size,
             cont_node_feats=node_feats,
-            dis_node_feats=gen_cfg.dis_node_feats,
+            dis_node_feats=dis_node_feats,
             cont_edge_feats=edge_feats,
-            dis_edge_feats=gen_cfg.dis_edge_feats,
+            dis_edge_feats=dis_edge_feats,
             temp=gen_cfg.temp,
             batch_size=gen_cfg.batch_size,
             allow_self_loops=gen_cfg.allow_self_loops,

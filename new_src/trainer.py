@@ -8,7 +8,6 @@ import torch.nn.functional as F
 from torch_geometric.data import Batch, Data
 from torch_geometric.utils import remove_isolated_nodes, remove_self_loops, subgraph
 import pygmtools
-from pygmtools.utils import dense_to_sparse, build_batch
 pygmtools.set_backend('pytorch')
 
 from egg_models.egg_generic import EggGeneric, EggGenericTrainer
@@ -179,31 +178,63 @@ class GenericGNNEggTrainer(EggGenericTrainer):
         return cleaned
 
     def egg_to_ex(self, generated: dict) -> Batch:
-        with torch.no_grad():
-            A_hard = (generated['adjacency_matrix'] >= 0.5)
-            edge_index = dense_to_sparse(A_hard)[0].transpose(1, 2)
+        """Convert generator outputs to the explainee's input format."""
 
-            print(generated)
-            X = generated['dis_node_feats']
+        device = self.model.device_param.device
 
-            if generated['dis_edge_feats'] is not None: 
-                E = generated['dis_edge_feats'].narrow(
-                    dim=1, start=0, length=edge_index.shape[2]
-                )
-            else: 
-                E = None
+        node_feats = misc.concat_possible_none_tensors(
+            generated.get("cont_node_feats"),
+            generated.get("dis_node_feats"),
+            dim=-1,
+        )
+        if node_feats is None:
+            raise ValueError("Generator did not produce node features.")
 
-            data_list = [
-                self._clean_generated_graph(
-                    Data(x = X, edge_index = A, edge_attr = E)
-                )
-                for (X, A, E) in zip(
-                    X.unbind(), edge_index.unbind(), E.unbind()
-                )
-            ]
+        adjacency = (generated["adjacency_matrix"] >= 0.5).to(device)
+        batch_size, max_nodes = adjacency.shape[:2]
 
-            return Batch.from_data_list(data_list)
-        return super().egg_to_ex(generated) 
+        edge_template = self._full_edge_template.to(device)
+        if edge_template.size(0) != batch_size:
+            edge_template = edge_template.expand(batch_size, -1, -1)
+
+        stacked_edge_feats = misc.concat_possible_none_tensors(
+            generated.get("cont_edge_feats"),
+            generated.get("dis_edge_feats"),
+            dim=-1,
+        )
+        if stacked_edge_feats is not None:
+            stacked_edge_feats = stacked_edge_feats.to(device)
+            if stacked_edge_feats.dim() == 2:
+                stacked_edge_feats = stacked_edge_feats.unsqueeze(-1)
+            edge_feat_dim = stacked_edge_feats.size(-1)
+            stacked_edge_feats = stacked_edge_feats.view(
+                batch_size, max_nodes ** 2, edge_feat_dim
+            )
+        else:
+            edge_feat_dim = 0
+
+        node_feats = node_feats.to(device)
+        data_list: List[Data] = []
+        adjacency_mask = adjacency.view(batch_size, -1)
+        for graph_idx in range(batch_size):
+            x = node_feats[graph_idx]
+            edge_mask = adjacency_mask[graph_idx]
+            edge_index = edge_template[graph_idx][:, edge_mask]
+            if edge_index.numel() == 0:
+                edge_index = edge_template[graph_idx].new_empty((2, 0))
+
+            edge_attr = None
+            if stacked_edge_feats is not None and edge_feat_dim > 0:
+                edge_attr = stacked_edge_feats[graph_idx][edge_mask]
+                if edge_attr.numel() == 0:
+                    edge_attr = stacked_edge_feats.new_zeros((0, edge_feat_dim))
+
+            data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
+            data = self._clean_generated_graph(data)
+            data_list.append(data)
+
+        batch = Batch.from_data_list(data_list)
+        return batch.to(device)
     
     # def egg_to_ex(self, generated: dict) -> Batch:
     #     """Convert generator outputs to the explainee's input format.
