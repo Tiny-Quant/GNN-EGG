@@ -376,19 +376,28 @@ class GEDasMatchLoss(nn.Module):
         )
     
         aff_mat = build_aff_mat(
-            node_feat1=gen_X, 
-            edge_feat1=gen_E, 
-            connectivity1=gen_A.transpose(1, 2), 
-            node_feat2=obs_X, 
-            edge_feat2=obs_E, 
-            connectivity2=obs_A.transpose(1, 2),  
-            node_aff_fn=node_edit_aff_fn, 
+            node_feat1=gen_X,
+            edge_feat1=gen_E,
+            connectivity1=gen_A.transpose(1, 2),
+            node_feat2=obs_X,
+            edge_feat2=obs_E,
+            connectivity2=obs_A.transpose(1, 2),
+            node_aff_fn=node_edit_aff_fn,
             edge_aff_fn=edge_edit_aff_fn,
-            n1=self.n1, 
-            ne1=self.ne1, 
-            n2=self.n2, 
+            n1=self.n1,
+            ne1=self.ne1,
+            n2=self.n2,
             ne2=self.ne2
         )
+
+        # Padded nodes or zero-valued feature vectors can occasionally lead to
+        # NaNs in the affinity matrix. The downstream QAP solvers do not accept
+        # NaNs and will raise when encountering them (for example, during the
+        # Sinkhorn normalisation step).  Replacing the invalid entries with
+        # neutral zeros keeps the optimisation well defined while still
+        # allowing gradients to flow through the remaining, valid affinities.
+        if torch.isnan(aff_mat).any() or torch.isinf(aff_mat).any():
+            aff_mat = torch.nan_to_num(aff_mat, nan=0.0, posinf=0.0, neginf=0.0)
 
         return aff_mat
 
