@@ -248,3 +248,37 @@ def test_loss_terms_preserve_gradients(trainer_bundle):
             g is not None and torch.any(g != 0)
             for g in grads
         ), f"Loss term {idx} should retain gradient flow"
+
+
+def test_structural_loss_preserves_gradients(trainer_bundle):
+    data, _, generator, trainer, _ = trainer_bundle
+    generator.zero_grad()
+
+    obs_batch = Batch.from_data_list([data])
+    obs_batch = obs_batch.to(trainer.model.device_param.device)
+
+    generated = generator()
+    gen_ex = trainer.egg_to_ex(generated)
+    gen_egg = trainer.egg_to_egg(generated)
+    obs_egg = trainer.ex_to_egg(obs_batch)
+
+    struct_loss = trainer.struct_loss_fn(
+        gen_egg,
+        obs_egg,
+        gen_ex,
+        obs_batch,
+        None,
+        None,
+    )
+
+    assert torch.all(torch.isfinite(struct_loss)), "Structural loss produced NaNs"
+
+    struct_loss.mean().backward()
+
+    grads = [p.grad for p in generator.parameters() if p.requires_grad]
+    assert any(
+        g is not None and torch.any(g != 0)
+        for g in grads
+    ), "Structural loss should propagate gradients to the generator"
+
+    generator.zero_grad()
