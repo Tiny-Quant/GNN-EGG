@@ -116,9 +116,9 @@ def test_generator_adapter_handles_missing_continuous_features():
     adapter = GeneratorAdapter([data])
     spec = adapter.spec
 
-    assert spec.num_cont_node_feats == 0
+    assert spec.num_cont_node_feats is None
     assert spec.dis_node_blocks == (3,)
-    assert spec.num_cont_edge_feats == 0
+    assert spec.num_cont_edge_feats is None
     assert spec.dis_edge_blocks == (2,)
 
 
@@ -138,7 +138,7 @@ def test_generator_adapter_mutag_discrete_counts():
     adapter = GeneratorAdapter([data])
     spec = adapter.spec
 
-    assert spec.num_cont_node_feats == 0
+    assert spec.num_cont_node_feats is None
     assert spec.dis_node_blocks == (7,)
-    assert spec.num_cont_edge_feats == 0
+    assert spec.num_cont_edge_feats is None
     assert spec.dis_edge_blocks == (4,)

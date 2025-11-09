@@ -324,7 +324,9 @@ class GEDasMatchLoss(nn.Module):
             cont_edit_aff = self.cont_edit_aff_fn(cont_feat1, cont_feat2)
 
         else:
-            cont_edit_aff = 0
+            cont_edit_aff = feat1.new_zeros(
+                feat1.size(0), feat1.size(1), feat2.size(1)
+            )
 
         #dis_start, dis_end = dis_indices
         #dis_feat1 = feat1[:, :, dis_start:dis_end]
@@ -337,7 +339,9 @@ class GEDasMatchLoss(nn.Module):
             dis_edit_aff = self.dis_edit_aff_fn(dis_feat1, dis_feat2)
 
         else:
-            dis_edit_aff = 0
+            dis_edit_aff = feat1.new_zeros(
+                feat1.size(0), feat1.size(1), feat2.size(1)
+            )
 
         edit_aff = (self.cont_edit_weight * cont_edit_aff + 
                     self.dis_edit_weight * dis_edit_aff)

@@ -49,7 +49,7 @@ def _dummy_generated(spec, data: Data):
     adjacency[0, data.edge_index[0], data.edge_index[1]] = 1.0
 
     cont_node_feats = None
-    if spec.num_cont_node_feats > 0:
+    if spec.num_cont_node_feats:
         cont_node_feats = torch.zeros(
             batch_size, max_nodes, spec.num_cont_node_feats
         )
@@ -64,7 +64,7 @@ def _dummy_generated(spec, data: Data):
         dis_node_feats[0, : dis_slice.size(0), :] = dis_slice
 
     cont_edge_feats = None
-    if spec.num_cont_edge_feats > 0:
+    if spec.num_cont_edge_feats:
         cont_edge_feats = torch.zeros(
             batch_size, max_nodes ** 2, spec.num_cont_edge_feats
         )

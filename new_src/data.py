@@ -222,18 +222,18 @@ class AdapterSpec:
     """Normalized description of dataset characteristics for the generator."""
 
     max_nodes: int
-    num_cont_node_feats: int
+    num_cont_node_feats: Optional[int]
     dis_node_blocks: Tuple[int, ...]
-    num_cont_edge_feats: int
+    num_cont_edge_feats: Optional[int]
     dis_edge_blocks: Tuple[int, ...]
 
     @property
     def total_node_features(self) -> int:
-        return self.num_cont_node_feats + sum(self.dis_node_blocks)
+        return (self.num_cont_node_feats or 0) + sum(self.dis_node_blocks)
 
     @property
     def total_edge_features(self) -> int:
-        return self.num_cont_edge_feats + sum(self.dis_edge_blocks)
+        return (self.num_cont_edge_feats or 0) + sum(self.dis_edge_blocks)
 
 
 def _is_binary_column(column: torch.Tensor, atol: float = 1e-6) -> bool:
@@ -243,7 +243,7 @@ def _is_binary_column(column: torch.Tensor, atol: float = 1e-6) -> bool:
     if not torch.allclose(column, rounded, atol=atol):
         return False
     unique_vals = torch.unique(rounded)
-    if unique_vals.numel() <= 1:
+    if unique_vals.numel() == 0:
         return False
     return bool(torch.all((unique_vals == 0) | (unique_vals == 1)))
 
@@ -334,8 +334,10 @@ class GeneratorAdapter:
                 stacked_nodes, block_hints=node_block_hints
             )
             dis_node_blocks = tuple(dis_node_blocks_list)
+            if num_cont_node_feats == 0:
+                num_cont_node_feats = None
         else:
-            num_cont_node_feats = 0
+            num_cont_node_feats = None
             dis_node_blocks = tuple()
 
         stacked_edges = _stack_feature_matrix(data_list, "edge_attr")
@@ -344,8 +346,10 @@ class GeneratorAdapter:
                 stacked_edges, block_hints=edge_block_hints
             )
             dis_edge_blocks = tuple(dis_edge_blocks_list)
+            if num_cont_edge_feats == 0:
+                num_cont_edge_feats = None
         else:
-            num_cont_edge_feats = 0
+            num_cont_edge_feats = None
             dis_edge_blocks = tuple()
 
         self._spec = AdapterSpec(
