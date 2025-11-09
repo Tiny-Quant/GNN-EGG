@@ -142,6 +142,84 @@ class GenericGNNEggTrainer(EggGenericTrainer):
         full_edges = edge_template.repeat(len(data_list), 1, 1).to(device)
         return [obs_X_tensor, full_edges, obs_E_tensor]
 
+    def egg_to_ex(self, generated: dict) -> Batch:
+        """Convert generator outputs to the explainee's input format.
+
+        The default implementation in :class:`EggGenericTrainer` relies on
+        ``dense_to_sparse`` to recover the sparse edge structure from the
+        sampled adjacency matrix.  Because the BinaryConcrete layer yields
+        non-zero samples for every potential edge, the collated batch can still
+        expose indices associated with padded nodes.  When the explainee's GCN
+        encounters those indices it attempts to look up features for
+        non-existent nodes and raises the observed
+        ``Expected index [...] to be smaller than self [...]`` runtime error.
+
+        Here we rebuild the sparse representation explicitly by masking the
+        full edge grid with the thresholded adjacency samples and gathering the
+        matching edge features.  This guarantees that each ``edge_index`` only
+        references nodes that exist in the generated graph and that the
+        resulting :class:`~torch_geometric.data.Batch` mirrors the structure of
+        the explainee's training data.
+        """
+
+        device = self.model.device_param.device
+
+        node_feats = misc.concat_possible_none_tensors(
+            generated.get("cont_node_feats"),
+            generated.get("dis_node_feats"),
+            dim=-1,
+        )
+        if node_feats is None:
+            raise ValueError("Generator did not produce node features.")
+
+        cont_edges = generated.get("cont_edge_feats")
+        dis_edges = generated.get("dis_edge_feats")
+        edge_weights = generated.get("edge_weights")
+        if edge_weights is not None:
+            if edge_weights.dim() == 1:
+                edge_weights = edge_weights.unsqueeze(0)
+            # ``dense_to_sparse`` may return weights as [B, E], [B, 1, E] or
+            # already expanded to [B, E, 1]; reshape them into a consistent
+            # ``[batch, edges, 1]`` tensor so they concatenate with the other
+            # edge features without triggering dimensionality mismatches.
+            edge_weights = edge_weights.reshape(edge_weights.shape[0], -1, 1)
+
+        stacked_edge_feats = misc.concat_possible_none_tensors(
+            misc.concat_possible_none_tensors(cont_edges, dis_edges, dim=-1),
+            edge_weights,
+            dim=-1,
+        )
+        edge_feat_dim = (
+            stacked_edge_feats.size(-1)
+            if stacked_edge_feats is not None and stacked_edge_feats.dim() > 2
+            else 0
+        )
+
+        adjacency = (generated["adjacency_matrix"] >= 0.5).view(
+            node_feats.size(0), -1
+        )
+        full_edge_indices = generated["full_edge_indices"].long()
+
+        data_list: List[Data] = []
+        for graph_idx in range(node_feats.size(0)):
+            x = node_feats[graph_idx]
+            edge_mask = adjacency[graph_idx]
+            edge_index = full_edge_indices[graph_idx][:, edge_mask]
+            if edge_index.numel() == 0:
+                edge_index = full_edge_indices.new_empty((2, 0))
+
+            edge_attr = None
+            if stacked_edge_feats is not None:
+                edge_attr = stacked_edge_feats[graph_idx][edge_mask]
+                if edge_attr.numel() == 0:
+                    edge_attr = stacked_edge_feats.new_zeros((0, edge_feat_dim))
+
+            data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
+            data_list.append(data)
+
+        batch = Batch.from_data_list(data_list)
+        return batch.to(device)
+
     def egg_to_egg(self, generated: dict) -> List[torch.Tensor]:
         gen_X = misc.concat_possible_none_tensors(
             generated["cont_node_feats"], generated["dis_node_feats"], dim=-1
@@ -171,12 +249,17 @@ class GenericGNNEggTrainer(EggGenericTrainer):
         )
         if not self.extra_losses:
             return base_terms
-        extra_terms = []
+        extra_terms: List[torch.Tensor] = []
         for term in self.extra_losses:
-            extra_terms.append(term(gen_ex_format, obs_batch))
-        return torch.cat(
-            [base_terms, torch.stack(extra_terms).to(base_terms.device)]
-        )
+            value = term(gen_ex_format, obs_batch)
+            if value.numel() != 1:
+                # Custom losses should return scalars; fall back to a mean
+                # reduction to avoid shape mismatches during aggregation.
+                value = value.mean()
+            extra_terms.append(
+                value.to(device=base_terms.device, dtype=base_terms.dtype)
+            )
+        return torch.cat([base_terms, torch.stack(extra_terms)])
 
     def train_one_epoch(self):
         self.optimizer.zero_grad()
