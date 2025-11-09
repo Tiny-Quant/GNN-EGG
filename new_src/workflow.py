@@ -143,19 +143,19 @@ class GNNEggExperiment:
         edge_feature_dim: int,
     ) -> EggGeneric:
         gen_cfg = self.config.generator
-        #max_node_size = gen_cfg.max_node_size or max_nodes(splits.train)
-        largest_graph = max_nodes(splits.train)
-        if gen_cfg.max_node_size is None:
-            max_node_size = largest_graph
-        else:
-            if gen_cfg.max_node_size < largest_graph:
-                raise ValueError(
-                    "GeneratorConfig.max_node_size "
-                    f"({gen_cfg.max_node_size}) is smaller than the largest "
-                    f"training graph ({largest_graph}). Increase the value "
-                    "or leave it unset to auto-detect."
-                )
-            max_node_size = gen_cfg.max_node_size
+        max_node_size = gen_cfg.max_node_size or max_nodes(splits.train)
+        # largest_graph = max_nodes(splits.train)
+        # if gen_cfg.max_node_size is None:
+        #     max_node_size = largest_graph
+        # else:
+        #     if gen_cfg.max_node_size < largest_graph:
+        #         raise ValueError(
+        #             "GeneratorConfig.max_node_size "
+        #             f"({gen_cfg.max_node_size}) is smaller than the largest "
+        #             f"training graph ({largest_graph}). Increase the value "
+        #             "or leave it unset to auto-detect."
+        #         )
+        #     max_node_size = gen_cfg.max_node_size
         node_feats = (
             gen_cfg.cont_node_feats
             if gen_cfg.cont_node_feats is not None
