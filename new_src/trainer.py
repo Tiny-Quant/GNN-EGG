@@ -6,6 +6,7 @@ from typing import Iterable, List, Optional, Sequence, Tuple
 import torch
 import torch.nn.functional as F
 from torch_geometric.data import Batch, Data
+from torch_geometric.utils import remove_isolated_nodes, remove_self_loops, subgraph
 from egg_models.egg_generic import EggGeneric, EggGenericTrainer
 from utils import misc
 
@@ -142,6 +143,37 @@ class GenericGNNEggTrainer(EggGenericTrainer):
         full_edges = edge_template.repeat(len(data_list), 1, 1).to(device)
         return [obs_X_tensor, full_edges, obs_E_tensor]
 
+    @staticmethod
+    def _clean_generated_graph(data: Data) -> Data:
+        """Remove self-loops and isolated nodes, reindexing the remainder."""
+
+        edge_index, edge_attr = remove_self_loops(data.edge_index, data.edge_attr)
+        edge_index, edge_attr, node_mask = remove_isolated_nodes(
+            edge_index, edge_attr, num_nodes=data.x.size(0)
+        )
+
+        if node_mask.sum() == 0:
+            cleaned = Data(
+                x=data.x.new_zeros(data.x.size()),
+                edge_index=edge_index,
+                edge_attr=edge_attr,
+            )
+            return cleaned
+
+        edge_index, edge_attr = subgraph(
+            node_mask,
+            edge_index=edge_index,
+            edge_attr=edge_attr,
+            relabel_nodes=True,
+            num_nodes=data.x.size(0),
+        )
+        cleaned = Data(
+            x=data.x[node_mask],
+            edge_index=edge_index,
+            edge_attr=edge_attr,
+        )
+        return cleaned
+
     def egg_to_ex(self, generated: dict) -> Batch:
         """Convert generator outputs to the explainee's input format.
 
@@ -189,32 +221,44 @@ class GenericGNNEggTrainer(EggGenericTrainer):
             edge_weights,
             dim=-1,
         )
-        edge_feat_dim = (
-            stacked_edge_feats.size(-1)
-            if stacked_edge_feats is not None and stacked_edge_feats.dim() > 2
-            else 0
-        )
 
-        adjacency = (generated["adjacency_matrix"] >= 0.5).view(
-            node_feats.size(0), -1
-        )
-        full_edge_indices = generated["full_edge_indices"].long()
+        batch_size = node_feats.size(0)
+        max_nodes = node_feats.size(1)
+        adjacency = (generated["adjacency_matrix"] >= 0.5).view(batch_size, -1)
+        edge_template = self._full_edge_template.to(device)
+        if edge_template.size(0) != batch_size:
+            edge_template = edge_template.expand(batch_size, -1, -1)
+
+        edge_feat_dim = 0
+        if stacked_edge_feats is not None:
+            if stacked_edge_feats.dim() == 2:
+                stacked_edge_feats = stacked_edge_feats.unsqueeze(-1)
+            if stacked_edge_feats.dim() == 3:
+                edge_feat_dim = stacked_edge_feats.size(-1)
+                stacked_edge_feats = stacked_edge_feats.view(
+                    batch_size, max_nodes ** 2, edge_feat_dim
+                )
+            else:
+                raise ValueError(
+                    "Expected stacked edge features to have 2 or 3 dimensions."
+                )
 
         data_list: List[Data] = []
-        for graph_idx in range(node_feats.size(0)):
+        for graph_idx in range(batch_size):
             x = node_feats[graph_idx]
             edge_mask = adjacency[graph_idx]
-            edge_index = full_edge_indices[graph_idx][:, edge_mask]
+            edge_index = edge_template[graph_idx][:, edge_mask]
             if edge_index.numel() == 0:
-                edge_index = full_edge_indices.new_empty((2, 0))
+                edge_index = edge_template[graph_idx].new_empty((2, 0))
 
             edge_attr = None
-            if stacked_edge_feats is not None:
+            if stacked_edge_feats is not None and edge_feat_dim > 0:
                 edge_attr = stacked_edge_feats[graph_idx][edge_mask]
                 if edge_attr.numel() == 0:
                     edge_attr = stacked_edge_feats.new_zeros((0, edge_feat_dim))
 
             data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr)
+            data = self._clean_generated_graph(data)
             data_list.append(data)
 
         batch = Batch.from_data_list(data_list)
