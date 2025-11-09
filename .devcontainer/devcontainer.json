@@ -9,9 +9,9 @@
                 "ms-python.python", 
                 "ms-python.vscode-pylance", 
                 "ms-toolsai.jupyter", 
-                "streetsidesoftware.code-spell-checker", 
                 "christian-kohler.path-intellisense", 
-                "pascalsenn.keyboard-quickfix" 
+                "streetsidesoftware.code-spell-checker", 
+                "pascalsenn.keyboard-quickfix"
             ], 
             "settings": {
                 "python.terminal.launchArgs": [

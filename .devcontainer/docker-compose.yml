@@ -1,20 +1,15 @@
 services:
 
-  devcontainer:
-    build:
-      context: . # Look up a directory.
-      dockerfile: dockerfile
+  devcontainer: 
+    build: 
+      # Only includes current directory in build context. Keep as small possible. 
+      # Use .dockerignore if big files in to be kept in .devcontainer/. 
+      context: ..  
+      dockerfile: .devcontainer/dockerfile
 
     volumes:
-      # Mount one directory up to the container's repo folder.
+      # Mount the local repo folder to a repo folder in the container. 
       - ../:/repo
-  
-    ports:
-      # Map a port on the host to a port on the container.
-      - 8888:8888
-
-    stdin_open: true
-    tty: true
 
     deploy:
       resources:
@@ -23,3 +18,6 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+
+    stdin_open: true # Keep the standard input available even if the terminal is closed.  
+    tty: true # Better interactive terminal sessions. 

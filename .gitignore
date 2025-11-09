@@ -1,6 +1,7 @@
 __pycache__/
 
-egg-env-38/
+#egg-env-38/
+venv/
 
 .ipynb_checkpoints
 

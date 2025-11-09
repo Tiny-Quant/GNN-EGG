@@ -1,0 +1,35 @@
+[project]
+name = "repo"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "ipython>=9.7.0",
+    "jupyter>=1.1.1",
+    "pytest>=8.4.2",
+    "torch>=2.9.0",
+    "torch-geometric>=2.7.0",
+    "torchvision>=0.24.0",
+    "matplotlib>=3.9.0",
+    "networkx>=3.2",
+    "scipy>=1.16.3",
+    "tqdm>=4.66.0",
+    "ray[tune]>=2.11.0",
+    "ipywidgets>=8.1.8",
+    "pydantic>=2.12.4",
+]
+
+[tool.uv.sources]
+"pyg_lib" = { index = "pyg-cu126" }
+"torch_scatter" = { index = "pyg-cu126" }
+"torch_sparse" = { index = "pyg-cu126" }
+"torch_cluster" = { index = "pyg-cu126" }
+"torch_spline_conv" = { index = "pyg-cu126" }
+
+
+[[tool.uv.index]]
+name = "pyg-cu126"
+url = "https://data.pyg.org/whl/torch-2.8.0+cu126.html"
+format = "flat"
+explicit = true
