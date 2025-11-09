@@ -161,23 +161,23 @@ class GNNEggExperiment:
 
         node_feats = gen_cfg.cont_node_feats
         if node_feats is None:
-            node_feats = spec.num_cont_node_feats or (node_feature_dim if node_feature_dim > 0 else None)
-        if node_feats == 0:
-            node_feats = None
+            node_feats = spec.num_cont_node_feats #or (node_feature_dim if node_feature_dim > 0 else None)
+        # if node_feats == 0:
+        #     node_feats = None
 
         dis_node_feats = gen_cfg.dis_node_feats
         if dis_node_feats is None:
-            dis_node_feats = spec.dis_node_blocks if spec.dis_node_blocks else None
+            dis_node_feats = spec.dis_node_blocks #if spec.dis_node_blocks else None
 
         edge_feats = gen_cfg.cont_edge_feats
         if edge_feats is None:
-            edge_feats = spec.num_cont_edge_feats or (edge_feature_dim if edge_feature_dim > 0 else None)
-        if edge_feats == 0:
-            edge_feats = None
+            edge_feats = spec.num_cont_edge_feats # or (edge_feature_dim if edge_feature_dim > 0 else None)
+        # if edge_feats == 0:
+        #     edge_feats = None
 
         dis_edge_feats = gen_cfg.dis_edge_feats
         if dis_edge_feats is None:
-            dis_edge_feats = spec.dis_edge_blocks if spec.dis_edge_blocks else None
+            dis_edge_feats = spec.dis_edge_blocks #if spec.dis_edge_blocks else None
 
         generator = EggGeneric(
             max_node_size=max_node_size,

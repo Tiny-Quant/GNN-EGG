@@ -398,13 +398,9 @@ class EggGenericTrainer(BaseTrainer):
                            gen_egg_format: List[torch.tensor], 
                            obs_egg_format: List[torch.tensor]) -> torch.tensor:
         
-        print("before pred") 
-         
         pred_loss, gen_act, gen_act_batch = (
             self.pred_loss_fn(gen_ex_format)
         )
-
-        print("after pred") 
         
         if self.reinforce_pred:
             pred_loss = pred_loss.mean() + (
@@ -412,7 +408,6 @@ class EggGenericTrainer(BaseTrainer):
                 ((1 / pred_loss) @ -generated['C_e_logLik']).sum() + 
                 ((1 / pred_loss) @ -generated['A_logLik']).sum()
             )
-            print("after reinforce")
         
         else: 
             pred_loss = pred_loss.mean()
@@ -421,6 +416,7 @@ class EggGenericTrainer(BaseTrainer):
         embed_dist = -1 * self.embed_dist_fn(gen_ex_format).mean()
 
         edge_loss = self.edge_loss_fn(self.model.AdjacencyMatrix.probs)
+        print("here")
         struct_loss = self.struct_loss_fn(gen_egg_format, obs_egg_format, 
                                           gen_ex_format, 
                                           obs_batch, gen_act, gen_act_batch)
