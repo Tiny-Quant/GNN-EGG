@@ -176,7 +176,13 @@ class GenericGNNEggTrainer(EggGenericTrainer):
         dis_edges = generated.get("dis_edge_feats")
         edge_weights = generated.get("edge_weights")
         if edge_weights is not None:
-            edge_weights = edge_weights.unsqueeze(-1)
+            if edge_weights.dim() == 1:
+                edge_weights = edge_weights.unsqueeze(0)
+            # ``dense_to_sparse`` may return weights as [B, E], [B, 1, E] or
+            # already expanded to [B, E, 1]; reshape them into a consistent
+            # ``[batch, edges, 1]`` tensor so they concatenate with the other
+            # edge features without triggering dimensionality mismatches.
+            edge_weights = edge_weights.reshape(edge_weights.shape[0], -1, 1)
 
         stacked_edge_feats = misc.concat_possible_none_tensors(
             misc.concat_possible_none_tensors(cont_edges, dis_edges, dim=-1),
