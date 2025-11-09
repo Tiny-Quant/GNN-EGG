@@ -66,14 +66,44 @@ def dict_cos_dist(dict1: Dict[str, torch.Tensor],
     Tensors contribute 2 if opposite, 1 is orthogonal, and 0 is same. 
     """
     agg_cos_dist = []
-    for key in set(dict1.keys()) & set(dict2.keys()): 
-        tensor1 = act_pool_func(dict1[key], 
-                                batch=batch_indices1, size=batch_size)
-        if expand2: 
+    for key in set(dict1.keys()) & set(dict2.keys()):
+        activations1 = dict1[key]
+
+        needs_pool = (
+            batch_indices1 is not None
+            and activations1.dim() > 1
+            and activations1.size(0) == batch_indices1.numel()
+        )
+
+        if needs_pool:
+            tensor1 = act_pool_func(
+                activations1, batch=batch_indices1, size=batch_size
+            )
+        else:
+            tensor1 = activations1
+
+        if tensor1.dim() == 1:
+            tensor1 = tensor1.unsqueeze(0)
+
+        if expand2:
             tensor2 = dict2[key].expand_as(tensor1).to(tensor1.device)
-        else: 
-            tensor2 = act_pool_func(dict2[key], 
-                                    batch=batch_indices2, size=batch_size)
+        else:
+            activations2 = dict2[key]
+            needs_pool2 = (
+                batch_indices2 is not None
+                and activations2.dim() > 1
+                and activations2.size(0) == batch_indices2.numel()
+            )
+
+            if needs_pool2:
+                tensor2 = act_pool_func(
+                    activations2, batch=batch_indices2, size=batch_size
+                )
+            else:
+                tensor2 = activations2
+
+            if tensor2.dim() == 1:
+                tensor2 = tensor2.unsqueeze(0)
 
         cos_sim = F.cosine_similarity(tensor1, tensor2, dim=1)
 
