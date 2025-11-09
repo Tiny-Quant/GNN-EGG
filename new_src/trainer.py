@@ -103,7 +103,9 @@ class GenericGNNEggTrainer(EggGenericTrainer):
             pad_nodes = max_nodes - x.size(0)
             if pad_nodes > 0:
                 x = F.pad(x, (0, 0, 0, pad_nodes))
-            obs_X.append(x)
+            node_mask = x.new_full((max_nodes, 1), fill_value=-1.0)
+            node_mask[: data.num_nodes] = 1.0
+            obs_X.append(torch.cat([x, node_mask], dim=-1))
 
             adj = torch.zeros((max_nodes, max_nodes), device=device)
             adj_indices = (
@@ -131,10 +133,13 @@ class GenericGNNEggTrainer(EggGenericTrainer):
                 flat_edge_attr = dense_attr.view(max_nodes ** 2, self.edge_feature_dim)
 
             adjacency_weights = adj.view(max_nodes ** 2, 1)
+            edge_indicator = adjacency_weights.mul(2.0).sub(1.0)
             if flat_edge_attr is not None:
-                edge_features = torch.cat([flat_edge_attr, adjacency_weights], dim=-1)
+                edge_features = torch.cat(
+                    [flat_edge_attr, adjacency_weights, edge_indicator], dim=-1
+                )
             else:
-                edge_features = adjacency_weights
+                edge_features = torch.cat([adjacency_weights, edge_indicator], dim=-1)
 
             obs_E.append(edge_features)
 
@@ -324,16 +329,46 @@ class GenericGNNEggTrainer(EggGenericTrainer):
     #     return batch.to(device)
 
     def egg_to_egg(self, generated: dict) -> List[torch.Tensor]:
-        gen_X = misc.concat_possible_none_tensors(
+        node_feats = misc.concat_possible_none_tensors(
             generated["cont_node_feats"], generated["dis_node_feats"], dim=-1
         )
-        gen_E = misc.concat_possible_none_tensors(
-            generated["cont_edge_feats"], generated["dis_edge_feats"], dim=-1
+        if node_feats is None:
+            raise ValueError("Generator did not produce node features.")
+
+        adjacency = generated["adjacency_matrix"]
+        batch_size, max_nodes, _ = adjacency.shape
+        node_presence = adjacency.sum(dim=-1, keepdim=True) + adjacency.sum(
+            dim=-2, keepdim=True
         )
-        gen_E = misc.concat_possible_none_tensors(
-            gen_E, generated.get("edge_weights"), dim=-1
+        node_mask = torch.tanh(node_presence).mul(2.0).sub(1.0)
+        node_feats = torch.cat([node_feats, node_mask], dim=-1)
+
+        stacked_edge_feats = misc.concat_possible_none_tensors(
+            generated.get("cont_edge_feats"),
+            generated.get("dis_edge_feats"),
+            dim=-1,
         )
-        return [gen_X, generated["full_edge_indices"], gen_E]
+        if stacked_edge_feats is not None:
+            if stacked_edge_feats.dim() == 2:
+                stacked_edge_feats = stacked_edge_feats.unsqueeze(-1)
+            stacked_edge_feats = stacked_edge_feats.view(
+                batch_size, max_nodes ** 2, stacked_edge_feats.size(-1)
+            )
+
+        edge_indices = self._full_edge_template.to(node_feats.device)
+        if edge_indices.size(0) != batch_size:
+            edge_indices = edge_indices.expand(batch_size, -1, -1)
+
+        adjacency_weights = adjacency.view(batch_size, -1, 1)
+        edge_indicator = adjacency_weights.mul(2.0).sub(1.0)
+        edge_features = misc.concat_possible_none_tensors(
+            stacked_edge_feats, adjacency_weights, dim=-1
+        )
+        edge_features = misc.concat_possible_none_tensors(
+            edge_features, edge_indicator, dim=-1
+        )
+
+        return [node_feats, edge_indices, edge_features]
 
     def compute_loss_terms(
         self,
