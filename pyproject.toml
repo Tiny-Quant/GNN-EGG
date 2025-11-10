@@ -18,6 +18,9 @@ dependencies = [
     "ray[tune]>=2.11.0",
     "ipywidgets>=8.1.8",
     "pydantic>=2.12.4",
+    "torchmetrics>=1.8.2",
+    "seaborn>=0.13.2",
+    "pygmtools>=0.5.5",
 ]
 
 [tool.uv.sources]
