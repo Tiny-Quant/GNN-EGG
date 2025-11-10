@@ -349,9 +349,12 @@ class GEDDataset(Dataset):
     def __len__(self) -> int:
         return len(self.pairs)
 
-    def __getitem__(self, idx: int) -> Tuple[Data, Data, torch.Tensor]:
+    def __getitem__(self, idx: int) -> Tuple[Data, Data, torch.Tensor, torch.Tensor, torch.Tensor]:
         g1, g2, label_info = self.pairs[idx]
-        return g1, g2, torch.tensor(label_info["norm"], dtype=torch.float32)
+        norm = torch.tensor(label_info["norm"], dtype=torch.float32)
+        raw = torch.tensor(label_info["raw"], dtype=torch.float32)
+        factor = torch.tensor(label_info["factor"], dtype=torch.float32)
+        return g1, g2, norm, raw, factor
 
     def get_raw_ged(self, idx: int) -> float:
         """Access the raw (unnormalized) GED value."""
@@ -372,15 +375,18 @@ class GEDDataset(Dataset):
 
 
 def collate_pairs(
-    batch: List[Tuple[Data, Data, torch.Tensor]]
-) -> Tuple[Batch, Batch, torch.Tensor]:
+    batch: List[Tuple[Data, Data, torch.Tensor, torch.Tensor, torch.Tensor]]
+) -> Tuple[Batch, Batch, torch.Tensor, torch.Tensor, torch.Tensor]:
     g1_list = [item[0] for item in batch]
     g2_list = [item[1] for item in batch]
-    labels = torch.stack([item[2] for item in batch]).float()
+
+    norm_labels = torch.stack([item[2] for item in batch]).float()
+    raw_labels = torch.stack([item[3] for item in batch]).float()
+    factors = torch.stack([item[4] for item in batch]).float()
 
     batch1 = Batch.from_data_list(g1_list)
     batch2 = Batch.from_data_list(g2_list)
-    return batch1, batch2, labels
+    return batch1, batch2, norm_labels, raw_labels, factors
 
 
 def create_and_save_ged_dataset(
