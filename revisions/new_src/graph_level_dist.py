@@ -26,11 +26,15 @@ class neural_approx_ged_dist(nn.Module):
         target_n = gen_graph.num_graphs
 
         indices = random.choices(range(len(self.data)), k=target_n)
-        chosen_graphs = [self.data for i in indices]
+        chosen_graphs = [self.data[i] for i in indices]
 
         return Batch.from_data_list(chosen_graphs)
 
     def forward(self, cont_data): 
         obs_data = self._sample_obs_data(cont_data)
 
-        return self.model(cont_data, obs_data)
+        dist = self.model(cont_data, obs_data) 
+        
+        return dist.mean()
+
+ 
