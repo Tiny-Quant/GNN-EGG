@@ -7,8 +7,9 @@ from typing import Sequence
 import torch
 from torch.utils.data import DataLoader
 
-from revisions.new_src.ged_dataset import GEDDataset, collate_pairs
-from revisions.new_src.simgnn import SimGNN, train_simgnn
+from .simgnn import SimGNN
+from .ged_dataset import GEDDataset, collate_pairs
+from .utils import convert_hard_to_soft_edges
 
 
 def _infer_input_dim(dataset: GEDDataset) -> int:
