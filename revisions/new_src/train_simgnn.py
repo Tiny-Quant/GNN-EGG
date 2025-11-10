@@ -10,9 +10,9 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torch_geometric.data import Batch, Data
 
-from models.simgnn import SimGNN
-from revisions.new_src.ged_dataset import GEDDataset, collate_pairs
-from revisions.new_src.utils import convert_hard_to_soft_edges
+from .simgnn import SimGNN
+from .ged_dataset import GEDDataset, collate_pairs
+from .utils import convert_hard_to_soft_edges
 
 
 def _infer_input_dim(dataset: GEDDataset) -> int:
