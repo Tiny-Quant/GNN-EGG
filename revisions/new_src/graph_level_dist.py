@@ -6,6 +6,8 @@ import torch
 from torch import nn
 from torch_geometric.data import Batch, Data
 
+from .utils import convert_hard_to_soft_edges
+
 class dummyDist(nn.Module):
     def __init__(self):
         super().__init__()
