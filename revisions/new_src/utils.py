@@ -7,8 +7,9 @@
 import torch
 import networkx as nx
 import matplotlib.pyplot as plt
-from torch_geometric.data import Data, Batch 
-from typing import Optional, Union
+from torch_geometric.data import Data, Batch
+from torch_geometric.loader import DataLoader
+from typing import Any, List, Mapping, Optional, Sequence, Union
 
 
 def _to_cpu(x):
@@ -18,13 +19,19 @@ def _to_cpu(x):
     return x
 
 
-def plot_graph(data, dataset,
-               node_size=400,
-               font_size=8,
-               edge_alpha=0.9,
-               layout="spring",
-               show_labels=True,
-               figsize=(6, 6)):
+def plot_graph(
+    data,
+    dataset,
+    node_size=400,
+    font_size=8,
+    edge_alpha=0.9,
+    layout="spring",
+    show_labels=True,
+    figsize=(6, 6),
+    *,
+    ax: Optional[plt.Axes] = None,
+    show: bool = True,
+):
     """
     Visualize a graph using dataset metadata.
 
@@ -99,13 +106,19 @@ def plot_graph(data, dataset,
         pos = nx.spring_layout(G)
 
     # -------- Plotting --------
-    plt.figure(figsize=figsize)
+    created_fig = False
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+        created_fig = True
+    else:
+        fig = ax.figure
 
     nx.draw_networkx_nodes(
         G,
         pos,
         node_color=node_colors,
         node_size=node_size,
+        ax=ax,
     )
 
     nx.draw_networkx_edges(
@@ -114,6 +127,7 @@ def plot_graph(data, dataset,
         width=edge_widths,
         edge_color="black",
         alpha=edge_alpha,
+        ax=ax,
     )
 
     if show_labels:
@@ -130,11 +144,16 @@ def plot_graph(data, dataset,
             pos,
             labels=label_map,
             font_size=font_size,
+            ax=ax,
         )
 
-    plt.axis("off")
-    plt.tight_layout()
-    plt.show()
+    ax.set_axis_off()
+    if created_fig:
+        fig.tight_layout()
+    if show:
+        fig.canvas.draw_idle()
+        plt.show()
+    return ax
 
 
 def convert_hard_to_soft_edges(
@@ -271,3 +290,160 @@ def convert_hard_to_soft_edges(
         delattr(new_data, "edge_attr")
 
     return new_data
+
+
+def eval_plot(
+    explainee: torch.nn.Module,
+    gen_graphs_0: Sequence[Data],
+    gen_graphs_1: Sequence[Data],
+    obs_graphs_0: Sequence[Data],
+    obs_graphs_1: Sequence[Data],
+    *,
+    target_class: int,
+    ged_model: torch.nn.Module,
+    dataset: Optional[Any] = None,
+    max_pairs: int = 5,
+    batch_size: int = 32,
+    device: Optional[Union[str, torch.device]] = None,
+    layout: str = "spring",
+    class_labels: Sequence[str] = ("Class 0", "Class 1"),
+    plot_kwargs: Optional[Mapping[str, Any]] = None,
+) -> None:
+    """Visualise generated/observed graph pairs with model confidences and GED."""
+
+    if ged_model is None:
+        raise ValueError("ged_model must be provided to compute graph distances")
+
+    plot_kwargs = dict(plot_kwargs or {})
+    for reserved in ("ax", "show"):
+        plot_kwargs.pop(reserved, None)
+
+    gen_graphs_0 = list(gen_graphs_0)
+    gen_graphs_1 = list(gen_graphs_1)
+    obs_graphs_0 = list(obs_graphs_0)
+    obs_graphs_1 = list(obs_graphs_1)
+
+    if not gen_graphs_0 and not gen_graphs_1:
+        raise ValueError("At least one generated graph must be provided")
+
+    try:
+        ged_device = next(ged_model.parameters()).device
+    except StopIteration:  # pragma: no cover - defensive programming
+        ged_device = torch.device("cpu")
+
+    if device is not None:
+        device = torch.device(device)
+
+    def _predict_probs(graphs: Sequence[Data]) -> Sequence[float]:
+        if len(graphs) == 0:
+            return []
+
+        loader = DataLoader(graphs, batch_size=batch_size)
+        probs: List[float] = []
+        with torch.inference_mode():
+            was_training = explainee.training
+            explainee.eval()
+            try:
+                for batch in loader:
+                    if device is not None:
+                        batch = batch.to(device)
+                    prediction = explainee(batch)
+                    if isinstance(prediction, Mapping):
+                        if "probs" in prediction:
+                            pred_probs = prediction["probs"]
+                        elif "logits" in prediction:
+                            pred_probs = prediction["logits"].softmax(dim=-1)
+                        else:
+                            raise KeyError(
+                                "Prediction dictionary must contain 'probs' or 'logits'."
+                            )
+                    else:
+                        pred_probs = prediction
+                        if pred_probs.dim() == 1:
+                            pred_probs = pred_probs.unsqueeze(0)
+                        pred_probs = pred_probs.softmax(dim=-1)
+
+                    pred_probs = pred_probs[:, target_class]
+                    probs.extend(pred_probs.detach().cpu().tolist())
+            finally:
+                if was_training:
+                    explainee.train()
+        return probs
+
+    def _pair_distance(gen_graph: Data, obs_graph: Data) -> float:
+        from .graph_level_dist import neural_approx_ged_dist
+
+        gen_soft = convert_hard_to_soft_edges(gen_graph)
+        obs_soft = convert_hard_to_soft_edges(obs_graph)
+
+        gen_batch = Batch.from_data_list([gen_soft])
+        obs_batch = Batch.from_data_list([obs_soft])
+        if ged_device is not None:
+            gen_batch = gen_batch.to(ged_device)
+            obs_batch = obs_batch.to(ged_device)
+
+        was_training = ged_model.training
+        try:
+            module = neural_approx_ged_dist([obs_graph], ged_model)
+            with torch.inference_mode():
+                distance = module.model(gen_batch, obs_batch)
+                distance = distance.mean()
+        finally:
+            if was_training:
+                ged_model.train()
+        return float(distance.detach().cpu().item())
+
+    gen_probs_0 = _predict_probs(gen_graphs_0)
+    gen_probs_1 = _predict_probs(gen_graphs_1)
+    obs_probs_0 = _predict_probs(obs_graphs_0)
+    obs_probs_1 = _predict_probs(obs_graphs_1)
+
+    class_pairs = [
+        (
+            class_labels[0] if len(class_labels) > 0 else "Class 0",
+            list(zip(gen_graphs_0, obs_graphs_0, gen_probs_0, obs_probs_0)),
+        ),
+        (
+            class_labels[1] if len(class_labels) > 1 else "Class 1",
+            list(zip(gen_graphs_1, obs_graphs_1, gen_probs_1, obs_probs_1)),
+        ),
+    ]
+
+    for class_label, pairs in class_pairs:
+        if not pairs:
+            continue
+
+        limit = min(max_pairs, len(pairs))
+        fig, axes = plt.subplots(limit, 2, figsize=(10, 5 * limit))
+        if limit == 1:
+            axes = axes.reshape(1, 2)
+
+        for row, (gen_graph, obs_graph, gen_prob, obs_prob) in enumerate(pairs[:limit]):
+            distance = _pair_distance(gen_graph, obs_graph)
+
+            ax_gen = axes[row, 0]
+            ax_obs = axes[row, 1]
+
+            plot_graph(
+                gen_graph,
+                dataset,
+                layout=layout,
+                ax=ax_gen,
+                show=False,
+                **plot_kwargs,
+            )
+            ax_gen.set_title(f"Generated (P={gen_prob:.3f})")
+
+            plot_graph(
+                obs_graph,
+                dataset,
+                layout=layout,
+                ax=ax_obs,
+                show=False,
+                **plot_kwargs,
+            )
+            ax_obs.set_title(f"Observed (P={obs_prob:.3f})\nGED≈{distance:.3f}")
+
+        fig.suptitle(f"{class_label} graph pairs", fontsize=14)
+        fig.tight_layout(rect=(0, 0, 1, 0.95))
+        plt.show()
