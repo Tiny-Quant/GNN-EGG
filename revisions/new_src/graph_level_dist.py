@@ -26,7 +26,10 @@ class neural_approx_ged_dist(nn.Module):
         target_n = gen_graph.num_graphs
 
         indices = random.choices(range(len(self.data)), k=target_n)
-        chosen_graphs = [self.data[i] for i in indices]
+        chosen_graphs = [
+            convert_hard_to_soft_edges(self.data[i]) 
+            for i in indices
+        ]
 
         return Batch.from_data_list(chosen_graphs)
 
