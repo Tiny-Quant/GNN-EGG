@@ -127,26 +127,28 @@ class GCNClassifier(nn.Module):
     def forward(self, batch=None, embeds=None, embeds_last=None, edge_weight=None, temperature=0.05):
         if embeds_last is None:
             if embeds is None:
+                device = batch.x.device
+
                 node_weight = (
                     None
                     if edge_weight is None
                     else smooth_maximum_weight_propagation(
-                        batch.edge_index,
-                        edge_weight,
-                        size=len(batch.x),
-                        temperature=temperature,
+                        batch.edge_index, edge_weight, size=len(batch.x), temperature=temperature,
                     )
                 )
 
-                if edge_weight is not None: edge_weight = edge_weight.to(batch.x.device) 
-                if node_weight is not None: node_weight = node_weight.to(batch.x.device) 
-                
-                h = self.conv(batch.x, batch.edge_index, edge_weight=edge_weight)
+                # --- ensure everything is on the same device ---
+                edge_index = batch.edge_index.to(device)
+                edge_weight = None if edge_weight is None else edge_weight.to(device)
+                node_weight = None if node_weight is None else node_weight.to(device)
+                bvec = batch.batch.to(device)
+
+                h = self.conv(batch.x, edge_index, edge_weight=edge_weight)
 
                 embeds = torch.cat(
                     [
-                        global_sum_pool_weighted(h, batch=batch.batch, node_weight=node_weight),
-                        global_mean_pool_weighted(h, batch=batch.batch, node_weight=node_weight),
+                        global_sum_pool_weighted(h, batch=bvec, node_weight=node_weight),
+                        global_mean_pool_weighted(h, batch=bvec, node_weight=node_weight),
                     ],
                     dim=1,
                 )
@@ -156,14 +158,12 @@ class GCNClassifier(nn.Module):
             embeds_last = h.relu()
 
         h = self.out(embeds_last)
-
         return dict(
             logits=h,
             probs=F.softmax(h, dim=-1),
             embeds=embeds,
             embeds_last=embeds_last,
         )
-
 
 ########################################
 #  Training logic
