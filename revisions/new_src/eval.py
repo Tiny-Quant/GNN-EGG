@@ -417,9 +417,60 @@ def compute_average_distance_to_classes(
     return results
 
 
-__all__ = [
-    "compute_target_class_probability",
-    "compute_counterfactual_delta",
-    "compute_sensitivity_to_perturbations",
-    "compute_average_distance_to_classes",
-]
+def eval_summary(
+    explainee: torch.nn.Module, 
+    gen_graphs_0: Sequence[Data], 
+    gen_graphs_1: Sequence[Data], 
+    obs_graphs_0: Sequence[Data],
+    obs_graphs_1: Sequence[Data],
+    dist_to_0: torch.nn.Module, 
+    dist_to_1: torch.nn.Module, 
+) -> float:
+
+    tcp_0 = compute_target_class_probability(
+        explainee, gen_graphs_0, 0
+    )
+    tcp_1 = compute_target_class_probability(
+        explainee, gen_graphs_1, 1
+    )
+    cd_0 = compute_counterfactual_delta(
+        explainee, gen_graphs_0, obs_graphs_1, 0
+    )
+    cd_1 = compute_counterfactual_delta(
+        explainee, gen_graphs_1, obs_graphs_0, 1
+    )
+    perd_0 = compute_sensitivity_to_perturbations(
+        explainee, gen_graphs_0, 0
+    )
+    perd_1 = compute_sensitivity_to_perturbations(
+        explainee, gen_graphs_1, 1
+    )
+
+    batch_0 = Batch.from_data_list(gen_graphs_0)
+    batch_1 = Batch.from_data_list(gen_graphs_1)
+
+    del_dist_0 = (
+        dist_to_0.evaluate(batch_0) - dist_to_1.evaluate(batch_0)
+    )
+
+    del_dist_1 = (
+        dist_to_1.evaluate(batch_1) - dist_to_0.evaluate(batch_1)
+    )
+
+    print(f"Prediction Interval Class 0 {tcp_0[0]} +/- {tcp_0[1]}\n")
+    print(f"Prediction Interval Class 1 {tcp_1[0]} +/- {tcp_1[1]}\n")
+    print(f"Counterfactual Shift to Class 0 {cd_0[0]} +/- {cd_0[1]}\n")
+    print(f"Counterfactual Shift to Class 1 {cd_1[1]} +/- {cd_1[1]}\n")
+    print(f"Class 0 Perturbation Sensitivity {perd_0[0]} +/- {perd_0[1]}\n")
+    print(f"Class 1 Perturbation Sensitivity {perd_1[0]} +/- {perd_1[1]}\n")
+    print(f"Relative Distance to Class 0 {del_dist_0.mean()} +/- {del_dist_0.std()} \n")
+    print(f"Relative Distance to Class 1 {del_dist_1.mean()} +/- {del_dist_1.std()} \n")
+
+    score = (
+        tcp_0[0] + tcp_1[0] 
+        + cd_0[0] + cd_1[0] 
+        - perd_0[0] - perd_1[0]
+        - del_dist_0.mean() - del_dist_1.mean()
+    )
+
+    return score

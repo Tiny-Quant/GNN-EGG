@@ -116,14 +116,35 @@ class neural_approx_ged_dist(_BaseGraphLevelDistance):
         self.model = model.eval()
 
     def forward(self, cont_data):
+        cont_data = convert_hard_to_soft_edges(cont_data) 
+
+        device = self._graph_device(cont_data)
+
         obs_data = self._sample_obs_data(
             cont_data, transform=convert_hard_to_soft_edges
         )
-
+        if device is not None:
+            obs_data = obs_data.to(device)
+        
         dist = self.model(cont_data, obs_data)
 
         return dist.mean()
 
+    @torch.no_grad()
+    def evaluate(self, cont_data):
+        cont_data = convert_hard_to_soft_edges(cont_data) 
+
+        device = self._graph_device(cont_data)
+
+        obs_data = self._sample_obs_data(
+            cont_data, transform=convert_hard_to_soft_edges
+        )
+        if device is not None:
+            obs_data = obs_data.to(device)
+        
+        dist = self.model(cont_data, obs_data)
+
+        return dist
 
 class mcs_soft_graph_dist(_BaseGraphLevelDistance):
     """Differentiable relaxation of a maximum common subgraph distance.
@@ -160,7 +181,8 @@ class mcs_soft_graph_dist(_BaseGraphLevelDistance):
 
     def forward(self, cont_data: Batch) -> torch.Tensor:
         """Compute the mean soft-MCS distance between generated and observed graphs."""
-
+        cont_data = convert_hard_to_soft_edges(cont_data) 
+        
         if not isinstance(cont_data, Batch):
             raise TypeError("cont_data must be a torch_geometric.data.Batch instance")
 
@@ -305,6 +327,8 @@ class spectral_dist(_BaseGraphLevelDistance):
         self.eps = float(eps)
 
     def forward(self, cont_data: Batch) -> torch.Tensor:
+        cont_data = convert_hard_to_soft_edges(cont_data) 
+
         if not isinstance(cont_data, Batch):
             raise TypeError("cont_data must be a torch_geometric.data.Batch instance")
 
@@ -483,19 +507,32 @@ class wl_graph_kernel_dist(_BaseGraphLevelDistance):
         # h0 = degree + alpha * mean(x, dim=1)
         self.alpha = nn.Parameter(torch.tensor(0.0))
 
+
     def forward(self, cont_data: Batch) -> torch.Tensor:
+        cont_data = convert_hard_to_soft_edges(cont_data)
+
         if not isinstance(cont_data, Batch):
             raise TypeError("cont_data must be a torch_geometric.data.Batch instance")
 
-        device = self._graph_device(cont_data)
+        # --- unify module & data device ---
+        # pick a reliable device from inputs
+        if getattr(cont_data, "x", None) is not None:
+            device = cont_data.x.device
+        elif getattr(cont_data, "edge_weight", None) is not None:
+            device = cont_data.edge_weight.device
+        else:
+            # fall back to CPU
+            device = torch.device("cpu")
 
-        obs_data = self._sample_obs_data(
-            cont_data, transform=convert_hard_to_soft_edges
-        )
-        if device is not None:
-            obs_data = obs_data.to(device)
+        # move the whole WL module (parameters/buffers) if needed
+        if next(self.parameters()).device != device:
+            self.to(device)
 
-        cont_list = cont_data.to_data_list()
+        # sample observed graphs and move them too
+        obs_data = self._sample_obs_data(cont_data, transform=convert_hard_to_soft_edges)
+        obs_data = obs_data.to(device)
+
+        cont_list = cont_data.to(device).to_data_list()
         obs_list = obs_data.to_data_list()
 
         distances: List[torch.Tensor] = []
@@ -503,6 +540,7 @@ class wl_graph_kernel_dist(_BaseGraphLevelDistance):
             distances.append(self._pair_distance(g_gen, g_obs))
 
         return torch.stack(distances).mean()
+
 
     def _pair_distance(self, g1: Data, g2: Data) -> torch.Tensor:
         # Build dense adjacencies (supports with/without self-loops)

@@ -142,132 +142,106 @@ def convert_hard_to_soft_edges(
     *,
     keep_edge_attr: bool = True,
 ) -> Union[Data, Batch]:
-    """Convert a PyG ``Data`` or ``Batch`` with a sparse edge index into one that
-    stores a *dense* (complete) edge index with soft edge weights.
-
-    This utility is primarily meant for similarity-learning models such as
-    SimGNN that operate on fully connected graphs with an ``edge_weight``
-    attribute.  The returned object is a cloned instance of ``data`` whose
-    ``edge_index`` enumerates every possible pair of nodes.  Existing edges are
-    assigned a weight of ``1`` (or the mean of their edge attributes when
-    available) while missing edges receive a weight of ``0``.
-
-    Args:
-        data: The original PyG ``Data`` or ``Batch`` object.
-        keep_edge_attr: When ``True`` and the original data contains
-            ``edge_attr``, a dense attribute tensor aligned with the new edge
-            index is produced.  Missing edges are padded with zeros so that
-            downstream modules can continue to rely on ``edge_attr`` if
-            required.
-
-    Returns:
-        A cloned ``Data`` object whose ``edge_index`` enumerates all
-        ``num_nodes ** 2`` directed edges and that contains a new
-        ``edge_weight`` attribute describing the soft connectivity.
+    """
+    Convert a sparse PyG graph to a dense all-pairs edge_index with an aligned
+    edge_weight (and optional edge_attr), without changing devices.
     """
 
+    def _infer_device(obj: Data) -> torch.device:
+        for key in ("x", "edge_index", "edge_attr", "edge_weight", "pos"):
+            t = getattr(obj, key, None)
+            if isinstance(t, torch.Tensor):
+                return t.device
+        # Fallback to CPU if nothing is present:
+        return torch.device("cpu")
+
     if isinstance(data, Batch):
-        # Recursively densify each component graph so that no artificial
-        # cross-graph connections are introduced when operating on batched
-        # inputs.
-        converted = [
-            convert_hard_to_soft_edges(item, keep_edge_attr=keep_edge_attr)
-            for item in data.to_data_list()
+        # Preserve the original batch's device (based on any tensor it holds)
+        batch_device = _infer_device(data)
+        converted_list = [
+            convert_hard_to_soft_edges(g, keep_edge_attr=keep_edge_attr)  # per-graph device is preserved inside
+            for g in data.to_data_list()
         ]
-        kwargs = {}
-        follow_batch = getattr(data, "_follow_batch", None)
-        exclude_keys = getattr(data, "_exclude_keys", None)
-        if follow_batch:
-            kwargs["follow_batch"] = follow_batch
-        if exclude_keys:
-            kwargs["exclude_keys"] = exclude_keys
-        return data.__class__.from_data_list(converted, **kwargs)
+        out = data.__class__.from_data_list(converted_list)
+        return out.to(batch_device)
 
     if not isinstance(data, Data):
-        raise TypeError(
-            "Expected a torch_geometric.data.Data or Batch instance"
-        )
+        raise TypeError("Expected a torch_geometric.data.Data or Batch instance")
 
+    # ---- infer device & basic sizes ----
+    device = _infer_device(data)
     edge_index = getattr(data, "edge_index", None)
     if edge_index is None:
         raise ValueError("The input graph does not contain an edge_index")
+    edge_index = edge_index.to(device)
 
     num_nodes: Optional[int] = getattr(data, "num_nodes", None)
-    if num_nodes is None or num_nodes == 0:
+    if not num_nodes:
         x = getattr(data, "x", None)
-        if x is not None:
+        if isinstance(x, torch.Tensor) and x.numel() > 0:
             num_nodes = int(x.size(0))
         elif edge_index.numel() > 0:
             num_nodes = int(edge_index.max().item() + 1)
         else:
             num_nodes = 0
 
-    device = edge_index.device
+    # ---- build dense all-pairs index on the SAME device ----
+    if num_nodes == 0:
+        # Degenerate case: keep a minimal clone on the right device
+        new_data = data.clone()
+        new_data.edge_index = torch.empty(2, 0, dtype=torch.long, device=device)
+        new_data.edge_weight = torch.empty(0, dtype=torch.float32, device=device)
+        if keep_edge_attr and hasattr(new_data, "edge_attr"):
+            delattr(new_data, "edge_attr")
+        return new_data
+
     full_row = torch.arange(num_nodes, device=device).repeat_interleave(num_nodes)
     full_col = torch.arange(num_nodes, device=device).repeat(num_nodes)
-    full_edge_index = torch.stack([full_row, full_col], dim=0)
+    full_edge_index = torch.stack([full_row, full_col], dim=0)  # [2, n*n]
 
     full_edge_weight = torch.zeros(num_nodes * num_nodes, device=device, dtype=torch.float32)
 
-    edge_attr = getattr(data, "edge_attr", None)
-    attr_for_weight = None
-    attr_dim = None
-    full_edge_attr = None
-    if edge_attr is not None:
-        attr_for_weight = edge_attr.to(device=device, dtype=torch.float32)
-    if keep_edge_attr and edge_attr is not None:
-        edge_attr = edge_attr if edge_attr.dim() > 1 else edge_attr.unsqueeze(-1)
-        attr_dim = int(edge_attr.size(-1))
-        full_edge_attr = torch.zeros(num_nodes * num_nodes, attr_dim,
-                                     device=device, dtype=edge_attr.dtype)
+    # ---- optional edge_attr handling ----
+    src_edge_attr = getattr(data, "edge_attr", None)
+    if src_edge_attr is not None:
+        src_edge_attr = src_edge_attr.to(device)
+        if src_edge_attr.dim() == 1:
+            src_edge_attr = src_edge_attr.unsqueeze(-1)
+        attr_dim = int(src_edge_attr.size(-1))
+        full_edge_attr = torch.zeros(num_nodes * num_nodes, attr_dim, device=device, dtype=src_edge_attr.dtype)
+    else:
+        attr_dim = None
+        full_edge_attr = None
 
+    # ---- scatter source edges into dense slots (stay on device) ----
     if edge_index.numel() > 0:
-        # Convert the original sparse edges into flat indices.
-        flat_ids = edge_index[0] * num_nodes + edge_index[1]
-
-        if attr_for_weight is not None:
-            if attr_for_weight.dim() == 1:
-                weights = attr_for_weight
-            else:
-                weights = attr_for_weight.mean(dim=-1)
+        flat_ids = edge_index[0] * num_nodes + edge_index[1]  # [E] on device
+        if src_edge_attr is not None:
+            weights = src_edge_attr.mean(dim=-1).to(dtype=torch.float32)  # [E]
         else:
             weights = torch.ones_like(flat_ids, dtype=torch.float32, device=device)
 
+        # Use scatter_reduce_ when available (PyTorch >= 1.12) – all on-device:
         if hasattr(full_edge_weight, "scatter_reduce_"):
-            full_edge_weight.scatter_reduce_(
-                0, flat_ids, weights, reduce="amax", include_self=True
-            )
+            full_edge_weight.scatter_reduce_(0, flat_ids, weights, reduce="amax", include_self=True)
         else:
-            for idx, weight in zip(flat_ids.tolist(), weights.tolist()):
-                if weight > full_edge_weight[idx]:
-                    full_edge_weight[idx] = weight
+            full_edge_weight[flat_ids] = torch.maximum(full_edge_weight[flat_ids], weights)
 
         if full_edge_attr is not None:
             if hasattr(full_edge_attr, "scatter_reduce_"):
-                full_edge_attr.scatter_reduce_(
-                    0,
-                    flat_ids.unsqueeze(-1).expand(-1, attr_dim),
-                    edge_attr,
-                    reduce="amax",
-                    include_self=True,
-                )
+                index = flat_ids.unsqueeze(-1).expand(-1, attr_dim)  # [E, D]
+                full_edge_attr.scatter_reduce_(0, index, src_edge_attr, reduce="amax", include_self=True)
             else:
-                for idx, value in zip(flat_ids.tolist(), edge_attr.tolist()):
-                    value_tensor = torch.as_tensor(value, dtype=full_edge_attr.dtype, device=device)
-                    current = full_edge_attr[idx]
-                    full_edge_attr[idx] = torch.maximum(current, value_tensor)
+                full_edge_attr[flat_ids] = torch.maximum(full_edge_attr[flat_ids], src_edge_attr)
 
+    # ---- assemble output (stays on the same device) ----
     new_data = data.clone()
     new_data.edge_index = full_edge_index
     new_data.edge_weight = full_edge_weight
-
     if full_edge_attr is not None:
-        if attr_dim == 1:
-            new_data.edge_attr = full_edge_attr.view(-1)
-        else:
-            new_data.edge_attr = full_edge_attr
+        new_data.edge_attr = full_edge_attr.view(-1) if attr_dim == 1 else full_edge_attr
     elif keep_edge_attr and hasattr(new_data, "edge_attr"):
-        # Remove stale attribute to avoid mismatched shapes downstream.
         delattr(new_data, "edge_attr")
 
-    return new_data
+    # Ensure any lingering tensors are on the same device
+    return new_data.to(device)
