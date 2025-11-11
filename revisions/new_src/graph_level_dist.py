@@ -243,4 +243,343 @@ class mcs_soft_graph_dist(_BaseGraphLevelDistance):
 
         return torch.exp(logits)
 
- 
+
+class spectral_dist(_BaseGraphLevelDistance):
+    r"""Spectral distance between generated and observed graphs.
+
+    This module compares (a subset of) the eigen-spectra of either the adjacency
+    matrix :math:`A`, the (unnormalized) Laplacian :math:`L=D-A`, or the
+    normalized Laplacian :math:`\mathcal{L}=I-D^{-1/2} A D^{-1/2}`.
+
+    Interpretation
+    --------------
+    - Small values (near 0) indicate the two graphs have similar global
+      structure as captured by the chosen spectrum (e.g., similar connectivity,
+      cut structure, community signals).
+    - Larger values indicate global structural mismatch.
+    - Because we differentiate through the eigendecomposition of matrices
+      constructed from ``edge_weight``, gradients flow to the edge weights,
+      enabling end-to-end training.
+
+    Args:
+        data: Sequence of reference graphs. On ``forward``, a batch of the same
+            size as ``cont_data`` is sampled (with replacement) from this pool.
+        which: One of {"laplacian", "norm_laplacian", "adjacency"} selecting the
+            matrix whose spectrum to compare. Default: "laplacian".
+        k: Number of eigenvalues to compare. If ``None`` (default), uses
+            ``min(n1, n2)`` per pair. If set and larger than either graph size,
+            spectra are zero-padded.
+        p: The :math:`\ell_p` norm used to compare spectra. Default: 2.0.
+        symmetrize: If ``True``, symmetrize the dense adjacency as
+            ``0.5 * (A + A.T)`` before constructing (normalized) Laplacians.
+        eps: Numerical stability constant for degree inverses.
+
+    Returns:
+        A scalar tensor containing the mean distance across the batch.
+    """
+
+    def __init__(
+        self,
+        data: Sequence[Data],
+        *,
+        which: str = "laplacian",
+        k: Optional[int] = None,
+        p: float = 2.0,
+        symmetrize: bool = True,
+        eps: float = 1e-8,
+    ) -> None:
+        super().__init__(data)
+
+        valid = {"laplacian", "norm_laplacian", "adjacency"}
+        if which not in valid:
+            raise ValueError(f"`which` must be one of {valid}, got {which!r}")
+        if k is not None and k <= 0:
+            raise ValueError("k must be a positive integer or None")
+        if p <= 0:
+            raise ValueError("p must be positive")
+
+        self.which = which
+        self.k = k
+        self.p = float(p)
+        self.symmetrize = bool(symmetrize)
+        self.eps = float(eps)
+
+    def forward(self, cont_data: Batch) -> torch.Tensor:
+        if not isinstance(cont_data, Batch):
+            raise TypeError("cont_data must be a torch_geometric.data.Batch instance")
+
+        device = self._graph_device(cont_data)
+
+        obs_data = self._sample_obs_data(
+            cont_data, transform=convert_hard_to_soft_edges
+        )
+        if device is not None:
+            obs_data = obs_data.to(device)
+
+        cont_list = cont_data.to_data_list()
+        obs_list = obs_data.to_data_list()
+
+        distances: List[torch.Tensor] = []
+        for g_gen, g_obs in zip(cont_list, obs_list):
+            distances.append(self._pair_distance(g_gen, g_obs))
+
+        return torch.stack(distances).mean()
+
+    def _pair_distance(self, g1: Data, g2: Data) -> torch.Tensor:
+        # Build dense adjacencies from possibly loop-less edge_weight
+        A1 = self._dense_adjacency_from_edge_weight(g1).clamp_min(0.0)
+        A2 = self._dense_adjacency_from_edge_weight(g2).clamp_min(0.0)
+
+        if A1.numel() == 0 or A2.numel() == 0:
+            # If either graph has no nodes, treat distance as maximal unit cost.
+            return torch.tensor(1.0, device=A1.device if A1.numel() else A2.device)
+
+        if self.symmetrize:
+            A1 = 0.5 * (A1 + A1.transpose(-1, -2))
+            A2 = 0.5 * (A2 + A2.transpose(-1, -2))
+
+        # Select matrix to spectrally compare
+        if self.which == "adjacency":
+            M1, M2 = A1, A2
+        elif self.which == "laplacian":
+            M1, M2 = self._laplacian(A1), self._laplacian(A2)
+        else:  # "norm_laplacian"
+            M1, M2 = self._normalized_laplacian(A1), self._normalized_laplacian(A2)
+
+        # Compute eigenvalues (symmetric -> eigh), ascending order
+        # Note: torch.linalg.eigh is differentiable for symmetric inputs.
+        e1 = torch.linalg.eigh(M1).eigenvalues
+        e2 = torch.linalg.eigh(M2).eigenvalues
+
+        # Align spectra (truncate or pad with zeros) to a common length
+        k = self.k
+        if k is None:
+            k = min(e1.numel(), e2.numel())
+            e1_k = e1.narrow(0, 0, k)
+            e2_k = e2.narrow(0, 0, k)
+        else:
+            e1_k = self._pad_or_truncate(e1, k)
+            e2_k = self._pad_or_truncate(e2, k)
+
+        # Compare with L_p norm, normalized by k to keep scale stable across sizes
+        diff = e1_k - e2_k
+        dist = diff.abs().pow(self.p).sum().pow(1.0 / self.p)
+        dist = dist / (k + self.eps)
+
+        return dist
+
+    @staticmethod
+    def _laplacian(A: torch.Tensor) -> torch.Tensor:
+        deg = A.sum(dim=-1)
+        L = torch.diag_embed(deg) - A
+        return L
+
+    def _normalized_laplacian(self, A: torch.Tensor) -> torch.Tensor:
+        deg = A.sum(dim=-1).clamp_min(self.eps)
+        d_inv_sqrt = deg.pow(-0.5)
+        D_inv_sqrt = torch.diag_embed(d_inv_sqrt)
+        I = torch.eye(A.size(-1), device=A.device, dtype=A.dtype)
+        # L_sym = I - D^{-1/2} A D^{-1/2}
+        return I - (D_inv_sqrt @ A @ D_inv_sqrt)
+
+    @staticmethod
+    def _pad_or_truncate(evals: torch.Tensor, k: int) -> torch.Tensor:
+        n = evals.numel()
+        if n == k:
+            return evals
+        if n > k:
+            return evals.narrow(0, 0, k)
+        # pad with zeros at the end (smallest eigenvalues first for L/Adj)
+        pad = evals.new_zeros(k - n)
+        return torch.cat([evals, pad], dim=0)
+
+
+class wl_graph_kernel_dist(_BaseGraphLevelDistance):
+    r"""Differentiable Weisfeiler–Lehman (WL) graph *kernel* distance.
+
+    This implements a *soft* WL-type kernel by performing T rounds of
+    differentiable message passing (a WL-style update) over dense
+    (soft-weighted) adjacencies, then comparing graph-level embeddings
+    with a normalized kernel. The distance is:
+
+        d(G1, G2) = 1 - (1/T) * Σ_t k(g1^(t), g2^(t)),
+
+    where k is a cosine kernel in [0, 1] and g^(t) is the pooled embedding at
+    iteration t. Gradients flow through the aggregations, so ``edge_weight``
+    can be optimized end-to-end.
+
+    Interpretation
+    --------------
+    - Small values (near 0): graphs are similar under WL-like subtree patterns.
+    - Large values (near 1): graphs are dissimilar in their multi-hop structure.
+    - Uses only the dense adjacency (and optionally node features via a single
+      scalar mixing parameter) so that gradients flow to ``edge_weight``.
+
+    Args:
+        data: Pool of reference graphs; on ``forward`` we sample a batch the same
+            size as ``cont_data`` (with replacement).
+        num_iterations: WL iterations (including t=0 representation in the kernel).
+        hidden_dim: Hidden dimensionality of node embeddings.
+        readout: Graph readout; one of {"mean", "sum"}.
+        symmetrize: If True, use 0.5 * (A + Aᵀ).
+        dropout: Dropout applied after each update (0 disables).
+        use_layer_norm: If True, applies LayerNorm to node embeddings each iter.
+        eps: Numerical stability constant.
+
+    Notes
+    -----
+    - Node features (if present) are incorporated as a single scalar shift to the
+      degree signal using a learned mixing parameter ``alpha``. This keeps input
+      dimensionality fixed (1) while still leveraging features in a stable way.
+    - To compare across iterations, we average cosine similarities from t=0..T.
+    """
+
+    def __init__(
+        self,
+        data: Sequence[Data],
+        *,
+        num_iterations: int = 3,
+        hidden_dim: int = 64,
+        readout: str = "mean",
+        symmetrize: bool = True,
+        dropout: float = 0.0,
+        use_layer_norm: bool = False,
+        eps: float = 1e-8,
+    ) -> None:
+        super().__init__(data)
+
+        if num_iterations <= 0:
+            raise ValueError("num_iterations must be a positive integer")
+        if hidden_dim <= 0:
+            raise ValueError("hidden_dim must be a positive integer")
+        if readout not in {"mean", "sum"}:
+            raise ValueError("readout must be 'mean' or 'sum'")
+        if not (0.0 <= dropout < 1.0):
+            raise ValueError("dropout must be in [0, 1)")
+
+        self.num_iterations = int(num_iterations)
+        self.hidden_dim = int(hidden_dim)
+        self.readout = readout
+        self.symmetrize = bool(symmetrize)
+        self.eps = float(eps)
+
+        # Input is 1D (degree + optional feature scalar via alpha)
+        self.input_proj = nn.Linear(1, hidden_dim)
+        self.updates_self = nn.ModuleList(
+            nn.Linear(hidden_dim, hidden_dim) for _ in range(self.num_iterations)
+        )
+        self.updates_neigh = nn.ModuleList(
+            nn.Linear(hidden_dim, hidden_dim) for _ in range(self.num_iterations)
+        )
+        self.act = nn.ReLU()
+        self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+        self.lns = (
+            nn.ModuleList(nn.LayerNorm(hidden_dim) for _ in range(self.num_iterations))
+            if use_layer_norm
+            else None
+        )
+
+        # Learned scalar mixing of node features (if present) into degree signal.
+        # h0 = degree + alpha * mean(x, dim=1)
+        self.alpha = nn.Parameter(torch.tensor(0.0))
+
+    def forward(self, cont_data: Batch) -> torch.Tensor:
+        if not isinstance(cont_data, Batch):
+            raise TypeError("cont_data must be a torch_geometric.data.Batch instance")
+
+        device = self._graph_device(cont_data)
+
+        obs_data = self._sample_obs_data(
+            cont_data, transform=convert_hard_to_soft_edges
+        )
+        if device is not None:
+            obs_data = obs_data.to(device)
+
+        cont_list = cont_data.to_data_list()
+        obs_list = obs_data.to_data_list()
+
+        distances: List[torch.Tensor] = []
+        for g_gen, g_obs in zip(cont_list, obs_list):
+            distances.append(self._pair_distance(g_gen, g_obs))
+
+        return torch.stack(distances).mean()
+
+    def _pair_distance(self, g1: Data, g2: Data) -> torch.Tensor:
+        # Build dense adjacencies (supports with/without self-loops)
+        A1 = self._dense_adjacency_from_edge_weight(g1).clamp_min(0.0)
+        A2 = self._dense_adjacency_from_edge_weight(g2).clamp_min(0.0)
+
+        if A1.numel() == 0 or A2.numel() == 0:
+            return torch.tensor(1.0, device=A1.device if A1.numel() else A2.device)
+
+        if self.symmetrize:
+            A1 = 0.5 * (A1 + A1.transpose(-1, -2))
+            A2 = 0.5 * (A2 + A2.transpose(-1, -2))
+
+        # Initial node signals (1D): degree + alpha * mean(x)
+        h1_0 = self._initial_signal(g1, A1)  # [n1, 1]
+        h2_0 = self._initial_signal(g2, A2)  # [n2, 1]
+
+        # Project to hidden
+        z1 = self.act(self.input_proj(h1_0))
+        z2 = self.act(self.input_proj(h2_0))
+
+        # Collect per-iteration graph embeddings (include t=0)
+        g1_embeds = [self._readout(z1)]
+        g2_embeds = [self._readout(z2)]
+
+        # WL-style updates
+        for t in range(self.num_iterations):
+            # Neighbor aggregation using dense adjacency (differentiable w.r.t. edge_weight)
+            m1 = A1 @ z1
+            m2 = A2 @ z2
+
+            # Linear transforms + nonlinearity
+            z1 = self.updates_self[t](z1) + self.updates_neigh[t](m1)
+            z2 = self.updates_self[t](z2) + self.updates_neigh[t](m2)
+
+            if self.lns is not None:
+                z1 = self.lns[t](z1)
+                z2 = self.lns[t](z2)
+
+            z1 = self.act(z1)
+            z2 = self.act(z2)
+
+            z1 = self.dropout(z1)
+            z2 = self.dropout(z2)
+
+            g1_embeds.append(self._readout(z1))
+            g2_embeds.append(self._readout(z2))
+
+        # Cosine kernel in [0, 1]: k = (cos + 1) / 2
+        sims = []
+        for e1, e2 in zip(g1_embeds, g2_embeds):
+            sim = self._cosine_sim01(e1, e2)
+            sims.append(sim)
+
+        k_mean = torch.stack(sims).mean()  # in [0, 1]
+        dist = 1.0 - k_mean  # map similarity to distance in [0, 1]
+        return dist
+
+    def _initial_signal(self, g: Data, A: torch.Tensor) -> torch.Tensor:
+        deg = A.sum(dim=-1, keepdim=True)  # [n, 1]
+        x = getattr(g, "x", None)
+        if x is not None:
+            x_mean = x.float().mean(dim=-1, keepdim=True)  # [n, 1]
+            return deg + self.alpha * x_mean
+        return deg
+
+    def _readout(self, Z: torch.Tensor) -> torch.Tensor:
+        if self.readout == "mean":
+            return Z.mean(dim=0, keepdim=True)  # [1, d]
+        else:  # "sum"
+            # Normalize by node count to keep scale comparable across sizes
+            return Z.sum(dim=0, keepdim=True) / (Z.size(0) + self.eps)
+
+    def _cosine_sim01(self, a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
+        # a, b: [1, d]
+        a = a.view(-1)
+        b = b.view(-1)
+        denom = (a.norm(p=2) * b.norm(p=2)).clamp_min(self.eps)
+        cos = (a @ b) / denom  # in [-1, 1]
+        return (cos + 1.0) * 0.5  # map to [0, 1]
