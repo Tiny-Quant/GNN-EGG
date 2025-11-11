@@ -42,6 +42,62 @@ def _temporary_eval(module: torch.nn.Module):
             module.train()
 
 
+@contextmanager
+def _module_on_device(module: torch.nn.Module, device: Optional[torch.device]):
+    """Move ``module`` to ``device`` for the duration of the context."""
+
+    if (device is None) or (not isinstance(module, torch.nn.Module)):
+        yield module
+        return
+
+    original_devices = {
+        param.device for param in module.parameters(recurse=True)
+    }
+    original_devices.update(buffer.device for buffer in module.buffers(recurse=True))
+
+    original_device = next(iter(original_devices), None)
+    needs_restore = original_device is not None and original_device != device
+
+    if needs_restore:
+        module.to(device)
+
+    try:
+        yield module
+    finally:
+        if needs_restore:
+            module.to(original_device)
+
+
+def _detect_module_device(module: torch.nn.Module) -> Optional[torch.device]:
+    """Infer the primary device associated with ``module``."""
+
+    if not isinstance(module, torch.nn.Module):
+        return None
+
+    for param in module.parameters(recurse=True):
+        return param.device
+
+    for buffer in module.buffers(recurse=True):
+        return buffer.device
+
+    return None
+
+
+def _detect_module_device(module: torch.nn.Module) -> Optional[torch.device]:
+    """Infer the primary device associated with ``module``."""
+
+    if not isinstance(module, torch.nn.Module):
+        return None
+
+    for param in module.parameters(recurse=True):
+        return param.device
+
+    for buffer in module.buffers(recurse=True):
+        return buffer.device
+
+    return None
+
+
 def _mean_std(values: Tensor) -> MeanStd:
     """Return the mean and (population) standard deviation of a tensor."""
 
@@ -418,59 +474,87 @@ def compute_average_distance_to_classes(
 
 
 def eval_summary(
-    explainee: torch.nn.Module, 
-    gen_graphs_0: Sequence[Data], 
-    gen_graphs_1: Sequence[Data], 
+    explainee: torch.nn.Module,
+    gen_graphs_0: Sequence[Data],
+    gen_graphs_1: Sequence[Data],
     obs_graphs_0: Sequence[Data],
     obs_graphs_1: Sequence[Data],
-    dist_to_0: torch.nn.Module, 
-    dist_to_1: torch.nn.Module, 
+    dist_to_0: torch.nn.Module,
+    dist_to_1: torch.nn.Module,
 ) -> float:
+    device = _detect_module_device(explainee)
 
-    tcp_0 = compute_target_class_probability(
-        explainee, gen_graphs_0, 0
-    )
-    tcp_1 = compute_target_class_probability(
-        explainee, gen_graphs_1, 1
-    )
-    cd_0 = compute_counterfactual_delta(
-        explainee, gen_graphs_0, obs_graphs_1, 0
-    )
-    cd_1 = compute_counterfactual_delta(
-        explainee, gen_graphs_1, obs_graphs_0, 1
-    )
-    perd_0 = compute_sensitivity_to_perturbations(
-        explainee, gen_graphs_0, 0
-    )
-    perd_1 = compute_sensitivity_to_perturbations(
-        explainee, gen_graphs_1, 1
-    )
+    with _module_on_device(explainee, device):
+        tcp_0 = compute_target_class_probability(
+            explainee, gen_graphs_0, 0, device=device
+        )
+        tcp_1 = compute_target_class_probability(
+            explainee, gen_graphs_1, 1, device=device
+        )
+        cd_0 = compute_counterfactual_delta(
+            explainee, gen_graphs_0, obs_graphs_1, 0, device=device
+        )
+        cd_1 = compute_counterfactual_delta(
+            explainee, gen_graphs_1, obs_graphs_0, 1, device=device
+        )
+        perd_0 = compute_sensitivity_to_perturbations(
+            explainee, gen_graphs_0, 0, device=device
+        )
+        perd_1 = compute_sensitivity_to_perturbations(
+            explainee, gen_graphs_1, 1, device=device
+        )
 
     batch_0 = Batch.from_data_list(gen_graphs_0)
     batch_1 = Batch.from_data_list(gen_graphs_1)
+    if device is not None:
+        batch_0 = batch_0.to(device)
+        batch_1 = batch_1.to(device)
 
-    del_dist_0 = (
-        dist_to_0.evaluate(batch_0) - dist_to_1.evaluate(batch_0)
+    with _module_on_device(dist_to_0, device) as module_0, _module_on_device(
+        dist_to_1, device
+    ) as module_1:
+        with torch.inference_mode():
+            del_dist_0 = (
+                module_0.evaluate(batch_0) - module_1.evaluate(batch_0)
+            )
+            del_dist_1 = (
+                module_1.evaluate(batch_1) - module_0.evaluate(batch_1)
+            )
+
+    del_dist_0 = del_dist_0.detach().float().cpu().view(-1)
+    del_dist_1 = del_dist_1.detach().float().cpu().view(-1)
+
+    del_dist_0_mean = del_dist_0.mean().item()
+    del_dist_0_std = (
+        del_dist_0.std(unbiased=False).item() if del_dist_0.numel() > 1 else 0.0
     )
-
-    del_dist_1 = (
-        dist_to_1.evaluate(batch_1) - dist_to_0.evaluate(batch_1)
+    del_dist_1_mean = del_dist_1.mean().item()
+    del_dist_1_std = (
+        del_dist_1.std(unbiased=False).item() if del_dist_1.numel() > 1 else 0.0
     )
 
     print(f"Prediction Interval Class 0 {tcp_0[0]} +/- {tcp_0[1]}\n")
     print(f"Prediction Interval Class 1 {tcp_1[0]} +/- {tcp_1[1]}\n")
     print(f"Counterfactual Shift to Class 0 {cd_0[0]} +/- {cd_0[1]}\n")
-    print(f"Counterfactual Shift to Class 1 {cd_1[1]} +/- {cd_1[1]}\n")
+    print(f"Counterfactual Shift to Class 1 {cd_1[0]} +/- {cd_1[1]}\n")
     print(f"Class 0 Perturbation Sensitivity {perd_0[0]} +/- {perd_0[1]}\n")
     print(f"Class 1 Perturbation Sensitivity {perd_1[0]} +/- {perd_1[1]}\n")
-    print(f"Relative Distance to Class 0 {del_dist_0.mean()} +/- {del_dist_0.std()} \n")
-    print(f"Relative Distance to Class 1 {del_dist_1.mean()} +/- {del_dist_1.std()} \n")
-
-    score = (
-        tcp_0[0] + tcp_1[0] 
-        + cd_0[0] + cd_1[0] 
-        - perd_0[0] - perd_1[0]
-        - del_dist_0.mean() - del_dist_1.mean()
+    print(
+        f"Relative Distance to Class 0 {del_dist_0_mean} +/- {del_dist_0_std} \n"
+    )
+    print(
+        f"Relative Distance to Class 1 {del_dist_1_mean} +/- {del_dist_1_std} \n"
     )
 
-    return score
+    score = (
+        tcp_0[0]
+        + tcp_1[0]
+        + cd_0[0]
+        + cd_1[0]
+        - perd_0[0]
+        - perd_1[0]
+        - del_dist_0_mean
+        - del_dist_1_mean
+    )
+
+    return float(score)

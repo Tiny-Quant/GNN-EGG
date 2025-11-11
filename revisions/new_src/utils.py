@@ -7,9 +7,12 @@
 import torch
 import networkx as nx
 import matplotlib.pyplot as plt
+import numpy as np
 from torch_geometric.data import Data, Batch
 from torch_geometric.loader import DataLoader
 from typing import Any, List, Mapping, Optional, Sequence, Union
+from collections.abc import Mapping as MappingABC, Sequence as SequenceABC
+from types import SimpleNamespace
 
 
 def _to_cpu(x):
@@ -272,7 +275,6 @@ def eval_plot(
     obs_graphs_0: Sequence[Data],
     obs_graphs_1: Sequence[Data],
     *,
-    target_class: int,
     ged_model: torch.nn.Module,
     dataset: Optional[Any] = None,
     max_pairs: int = 5,
@@ -287,6 +289,13 @@ def eval_plot(
     if ged_model is None:
         raise ValueError("ged_model must be provided to compute graph distances")
 
+    def _infer_module_device(module: torch.nn.Module) -> torch.device:
+        for tensor in module.parameters():
+            return tensor.device
+        for tensor in module.buffers():
+            return tensor.device
+        return torch.device("cpu")
+
     plot_kwargs = dict(plot_kwargs or {})
     for reserved in ("ax", "show"):
         plot_kwargs.pop(reserved, None)
@@ -299,19 +308,18 @@ def eval_plot(
     if not gen_graphs_0 and not gen_graphs_1:
         raise ValueError("At least one generated graph must be provided")
 
-    try:
-        ged_device = next(ged_model.parameters()).device
-    except StopIteration:  # pragma: no cover - defensive programming
-        ged_device = torch.device("cpu")
+    ged_device = _infer_module_device(ged_model)
 
     if device is not None:
         device = torch.device(device)
+    else:
+        device = _infer_module_device(explainee)
 
-    def _predict_probs(graphs: Sequence[Data]) -> Sequence[float]:
+    def _predict_probs(graphs: Sequence[Data], target_class_idx: int) -> Sequence[float]:
         if len(graphs) == 0:
             return []
 
-        loader = DataLoader(graphs, batch_size=batch_size)
+        loader = DataLoader(graphs, batch_size=batch_size, shuffle=False)
         probs: List[float] = []
         with torch.inference_mode():
             was_training = explainee.training
@@ -319,7 +327,7 @@ def eval_plot(
             try:
                 for batch in loader:
                     if device is not None:
-                        batch = batch.to(device)
+                        batch = batch.to(device, non_blocking=True)
                     prediction = explainee(batch)
                     if isinstance(prediction, Mapping):
                         if "probs" in prediction:
@@ -336,7 +344,7 @@ def eval_plot(
                             pred_probs = pred_probs.unsqueeze(0)
                         pred_probs = pred_probs.softmax(dim=-1)
 
-                    pred_probs = pred_probs[:, target_class]
+                    pred_probs = pred_probs[:, target_class_idx]
                     probs.extend(pred_probs.detach().cpu().tolist())
             finally:
                 if was_training:
@@ -346,60 +354,107 @@ def eval_plot(
     def _pair_distance(gen_graph: Data, obs_graph: Data) -> float:
         from .graph_level_dist import neural_approx_ged_dist
 
-        gen_soft = convert_hard_to_soft_edges(gen_graph)
-        obs_soft = convert_hard_to_soft_edges(obs_graph)
-
-        gen_batch = Batch.from_data_list([gen_soft])
-        obs_batch = Batch.from_data_list([obs_soft])
-        if ged_device is not None:
-            gen_batch = gen_batch.to(ged_device)
-            obs_batch = obs_batch.to(ged_device)
-
         was_training = ged_model.training
         try:
-            module = neural_approx_ged_dist([obs_graph], ged_model)
+            obs_ref = convert_hard_to_soft_edges(obs_graph)
+            if ged_device is not None:
+                obs_ref = obs_ref.to(ged_device)
+
+            module = neural_approx_ged_dist([obs_ref], ged_model)
+
+            gen_soft = convert_hard_to_soft_edges(gen_graph)
+            gen_batch = Batch.from_data_list([gen_soft])
+            if ged_device is not None:
+                gen_batch = gen_batch.to(ged_device)
+
             with torch.inference_mode():
-                distance = module.model(gen_batch, obs_batch)
-                distance = distance.mean()
+                distance = module(gen_batch)
         finally:
             if was_training:
                 ged_model.train()
         return float(distance.detach().cpu().item())
 
-    gen_probs_0 = _predict_probs(gen_graphs_0)
-    gen_probs_1 = _predict_probs(gen_graphs_1)
-    obs_probs_0 = _predict_probs(obs_graphs_0)
-    obs_probs_1 = _predict_probs(obs_graphs_1)
+    gen_probs_0 = _predict_probs(gen_graphs_0, 0)
+    gen_probs_1 = _predict_probs(gen_graphs_1, 1)
+    obs_probs_0 = _predict_probs(obs_graphs_0, 0)
+    obs_probs_1 = _predict_probs(obs_graphs_1, 1)
 
     class_pairs = [
         (
+            0,
             class_labels[0] if len(class_labels) > 0 else "Class 0",
             list(zip(gen_graphs_0, obs_graphs_0, gen_probs_0, obs_probs_0)),
         ),
         (
+            1,
             class_labels[1] if len(class_labels) > 1 else "Class 1",
             list(zip(gen_graphs_1, obs_graphs_1, gen_probs_1, obs_probs_1)),
         ),
     ]
 
-    for class_label, pairs in class_pairs:
-        if not pairs:
-            continue
+    class_pairs = [(idx, label, pairs) for idx, label, pairs in class_pairs if pairs]
+    if not class_pairs:
+        raise ValueError("No graph pairs available to plot.")
 
-        limit = min(max_pairs, len(pairs))
-        fig, axes = plt.subplots(limit, 2, figsize=(10, 5 * limit))
-        if limit == 1:
-            axes = axes.reshape(1, 2)
+    limits = [min(max_pairs, len(pairs)) for _, _, pairs in class_pairs]
+    max_limit = max(limits)
 
-        for row, (gen_graph, obs_graph, gen_prob, obs_prob) in enumerate(pairs[:limit]):
+    if max_limit == 0:
+        raise ValueError("max_pairs resulted in zero columns to plot.")
+
+    fig_width = max(1, max_limit * 2) * 4.5
+    fig_height = len(class_pairs) * 4.5
+    fig, axes = plt.subplots(len(class_pairs), max_limit * 2, figsize=(fig_width, fig_height))
+
+    axes_array = np.array(axes, copy=False)
+    if axes_array.ndim == 1:
+        axes_array = axes_array.reshape(1, -1)
+
+    def _select_dataset(graph: Data, class_idx: int) -> Any:
+        if isinstance(dataset, MappingABC):
+            candidate = dataset.get(class_idx)
+            if candidate is not None:
+                return candidate
+        elif isinstance(dataset, SequenceABC) and not isinstance(dataset, (str, bytes)):
+            if class_idx < len(dataset):
+                return dataset[class_idx]
+        elif dataset is not None:
+            return dataset
+
+        meta_candidate = getattr(graph, "metadata", None)
+        if meta_candidate is not None:
+            if isinstance(meta_candidate, MappingABC):
+                return SimpleNamespace(**meta_candidate)
+            return meta_candidate
+
+        dataset_attr = getattr(graph, "dataset", None)
+        if dataset_attr is not None:
+            return dataset_attr
+
+        return dataset
+
+    for row_idx, (class_idx, class_label, pairs) in enumerate(class_pairs):
+        limit = limits[row_idx]
+        row_axes = axes_array[row_idx]
+
+        for pair_idx in range(max_limit):
+            ax_gen = row_axes[pair_idx * 2]
+            ax_obs = row_axes[pair_idx * 2 + 1]
+
+            if pair_idx >= limit:
+                ax_gen.set_visible(False)
+                ax_obs.set_visible(False)
+                continue
+
+            gen_graph, obs_graph, gen_prob, obs_prob = pairs[pair_idx]
             distance = _pair_distance(gen_graph, obs_graph)
 
-            ax_gen = axes[row, 0]
-            ax_obs = axes[row, 1]
+            dataset_gen = _select_dataset(gen_graph, class_idx)
+            dataset_obs = _select_dataset(obs_graph, class_idx)
 
             plot_graph(
                 gen_graph,
-                dataset,
+                dataset_gen,
                 layout=layout,
                 ax=ax_gen,
                 show=False,
@@ -409,7 +464,7 @@ def eval_plot(
 
             plot_graph(
                 obs_graph,
-                dataset,
+                dataset_obs,
                 layout=layout,
                 ax=ax_obs,
                 show=False,
@@ -417,6 +472,9 @@ def eval_plot(
             )
             ax_obs.set_title(f"Observed (P={obs_prob:.3f})\nGED≈{distance:.3f}")
 
-        fig.suptitle(f"{class_label} graph pairs", fontsize=14)
-        fig.tight_layout(rect=(0, 0, 1, 0.95))
-        plt.show()
+        first_axis = row_axes[0]
+        first_axis.set_ylabel(class_label, rotation=90, fontsize=12, labelpad=40)
+
+    fig.suptitle("Generated vs Observed graph pairs", fontsize=16)
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
+    plt.show()
