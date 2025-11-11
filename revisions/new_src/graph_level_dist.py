@@ -1,10 +1,104 @@
-import math
 import random
-from typing import List, Sequence
+from typing import Callable, List, Optional, Sequence
 
 import torch
 from torch import nn
 from torch_geometric.data import Batch, Data
+
+from .utils import convert_hard_to_soft_edges
+
+
+class _BaseGraphLevelDistance(nn.Module):
+    """Utility base class shared by graph-level distance modules."""
+
+    def __init__(self, data: Sequence[Data]) -> None:
+        super().__init__()
+        try:
+            length = len(data)
+        except TypeError as exc:  # pragma: no cover - defensive programming
+            raise TypeError(
+                "data must define __len__ so graphs can be sampled"
+            ) from exc
+        if length == 0:
+            raise ValueError("data must contain at least one reference graph")
+        self.data = data
+
+    def _sample_obs_data(
+        self,
+        gen_graph: Batch,
+        *,
+        transform: Optional[Callable[[Data], Data]] = None,
+    ) -> Batch:
+        target_n = gen_graph.num_graphs
+
+        indices = random.choices(range(len(self.data)), k=target_n)
+        chosen_graphs: List[Data] = []
+        for i in indices:
+            graph = self.data[i]
+            if transform is not None:
+                graph = transform(graph)
+            chosen_graphs.append(graph)
+
+        return Batch.from_data_list(chosen_graphs)
+
+    @staticmethod
+    def _infer_num_nodes(graph: Data) -> int:
+        num_nodes = getattr(graph, "num_nodes", None)
+        if num_nodes is None or num_nodes == 0:
+            x = getattr(graph, "x", None)
+            if x is not None:
+                num_nodes = int(x.size(0))
+            else:
+                raise ValueError(
+                    "Unable to infer the number of nodes. Provide graph.x or graph.num_nodes."
+                )
+        return int(num_nodes)
+
+    @classmethod
+    def _dense_adjacency_from_edge_weight(cls, graph: Data) -> torch.Tensor:
+        edge_weight = getattr(graph, "edge_weight", None)
+        if edge_weight is None:
+            raise ValueError(
+                "Graph does not contain edge_weight. Ensure graphs are converted to a dense representation."
+            )
+
+        edge_weight = edge_weight.float()
+        num_nodes = cls._infer_num_nodes(graph)
+        if num_nodes == 0:
+            return edge_weight.new_zeros((0, 0))
+
+        expected_with_loops = num_nodes * num_nodes
+        expected_without_loops = num_nodes * (num_nodes - 1)
+        numel = edge_weight.numel()
+
+        if numel == expected_with_loops:
+            return edge_weight.view(num_nodes, num_nodes)
+
+        if numel != expected_without_loops:
+            raise ValueError(
+                "edge_weight does not represent a supported dense adjacency matrix: "
+                f"expected {expected_with_loops} (with self-loops) or {expected_without_loops} "
+                f"(without self-loops) values but found {numel}"
+            )
+
+        mask = torch.ones(
+            (num_nodes, num_nodes), dtype=torch.bool, device=edge_weight.device
+        )
+        mask.fill_diagonal_(False)
+
+        adjacency = edge_weight.new_zeros((num_nodes * num_nodes,))
+        adjacency = adjacency.masked_scatter(mask.view(-1), edge_weight)
+        return adjacency.view(num_nodes, num_nodes)
+
+    @staticmethod
+    def _graph_device(graph) -> Optional[torch.device]:
+        edge_weight = getattr(graph, "edge_weight", None)
+        if edge_weight is not None:
+            return edge_weight.device
+        features = getattr(graph, "x", None)
+        if features is not None:
+            return features.device
+        return None
 
 class dummyDist(nn.Module):
     def __init__(self):
@@ -15,33 +109,23 @@ class dummyDist(nn.Module):
 
         return 1
 
-class neural_approx_ged_dist(nn.Module):
+class neural_approx_ged_dist(_BaseGraphLevelDistance):
 
-    def __init__(self, data, model):
-        super().__init__()
-        self.data = data
+    def __init__(self, data: Sequence[Data], model: nn.Module):
+        super().__init__(data)
         self.model = model.eval()
-       
-    def _sample_obs_data(self, gen_graph):
-        target_n = gen_graph.num_graphs
 
-        indices = random.choices(range(len(self.data)), k=target_n)
-        chosen_graphs = [
-            convert_hard_to_soft_edges(self.data[i]) 
-            for i in indices
-        ]
-
-        return Batch.from_data_list(chosen_graphs)
-
-    def forward(self, cont_data): 
-        obs_data = self._sample_obs_data(cont_data)
+    def forward(self, cont_data):
+        obs_data = self._sample_obs_data(
+            cont_data, transform=convert_hard_to_soft_edges
+        )
 
         dist = self.model(cont_data, obs_data)
 
         return dist.mean()
 
 
-class mcs_soft_graph_dist(nn.Module):
+class mcs_soft_graph_dist(_BaseGraphLevelDistance):
     """Differentiable relaxation of a maximum common subgraph distance.
 
     The module mirrors :class:`neural_approx_ged_dist` in spirit – it samples a
@@ -72,27 +156,15 @@ class mcs_soft_graph_dist(nn.Module):
         sinkhorn_iters: int = 10,
         eps: float = 1e-8,
     ) -> None:
-        super().__init__()
+        super().__init__(data)
         if temperature <= 0:
             raise ValueError("temperature must be positive")
         if sinkhorn_iters <= 0:
             raise ValueError("sinkhorn_iters must be a positive integer")
 
-        self.data = list(data)
-        if len(self.data) == 0:
-            raise ValueError("data must contain at least one reference graph")
-
         self.temperature = float(temperature)
         self.sinkhorn_iters = int(sinkhorn_iters)
         self.eps = float(eps)
-
-    def _sample_obs_data(self, gen_graph: Batch) -> Batch:
-        target_n = gen_graph.num_graphs
-
-        indices = random.choices(range(len(self.data)), k=target_n)
-        chosen_graphs = [self.data[i] for i in indices]
-
-        return Batch.from_data_list(chosen_graphs)
 
     def forward(self, cont_data: Batch) -> torch.Tensor:
         """Compute the mean soft-MCS distance between generated and observed graphs."""
@@ -100,11 +172,7 @@ class mcs_soft_graph_dist(nn.Module):
         if not isinstance(cont_data, Batch):
             raise TypeError("cont_data must be a torch_geometric.data.Batch instance")
 
-        device = None
-        if hasattr(cont_data, "edge_weight") and cont_data.edge_weight is not None:
-            device = cont_data.edge_weight.device
-        elif hasattr(cont_data, "x") and cont_data.x is not None:
-            device = cont_data.x.device
+        device = self._graph_device(cont_data)
 
         obs_data = self._sample_obs_data(cont_data)
         if device is not None:
@@ -121,8 +189,8 @@ class mcs_soft_graph_dist(nn.Module):
         return stacked.mean()
 
     def _pair_distance(self, g1: Data, g2: Data) -> torch.Tensor:
-        adj1 = self._get_dense_adjacency(g1)
-        adj2 = self._get_dense_adjacency(g2)
+        adj1 = self._dense_adjacency_from_edge_weight(g1)
+        adj2 = self._dense_adjacency_from_edge_weight(g2)
 
         if adj1.numel() == 0 or adj2.numel() == 0:
             # Handle empty graphs gracefully: if either graph has no nodes the
@@ -155,34 +223,6 @@ class mcs_soft_graph_dist(nn.Module):
 
         overlap_score = overlap_score.clamp(0.0, 1.0)
         return 1.0 - overlap_score
-
-    def _get_dense_adjacency(self, graph: Data) -> torch.Tensor:
-        edge_weight = getattr(graph, "edge_weight", None)
-        if edge_weight is None:
-            raise ValueError(
-                "Graph does not contain edge_weight. Ensure graphs are converted to a dense representation."
-            )
-
-        edge_weight = edge_weight.float()
-        num_nodes = getattr(graph, "num_nodes", None)
-        if num_nodes is None or num_nodes == 0:
-            x = getattr(graph, "x", None)
-            if x is not None:
-                num_nodes = int(x.size(0))
-            else:
-                num_nodes = int(round(math.sqrt(edge_weight.numel())))
-
-        if num_nodes == 0:
-            return edge_weight.new_zeros((0, 0))
-
-        expected = num_nodes * num_nodes
-        if edge_weight.numel() != expected:
-            raise ValueError(
-                "edge_weight does not represent a dense adjacency matrix: "
-                f"expected {expected} values but found {edge_weight.numel()}"
-            )
-
-        return edge_weight.view(num_nodes, num_nodes)
 
     def _get_node_features(self, graph: Data, adjacency: torch.Tensor) -> torch.Tensor:
         features = getattr(graph, "x", None)
