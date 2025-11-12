@@ -84,10 +84,31 @@ def extract_motif_components(data: Data, edge_mask, p=0.1):
     motifs = []
     for comp_nodes in comps:
         comp_nodes_tensor = torch.tensor(comp_nodes, dtype=torch.long)
-        ei, ea = subgraph(comp_nodes_tensor, data.edge_index, edge_attr=None)
-        motifs.append(Data(x=None if not hasattr(data, "x") else data.x[comp_nodes_tensor],
-                           edge_index=ei,
-                           num_nodes=len(comp_nodes)))
+
+        # Relabel the induced subgraph so that its node indices are contiguous
+        # starting from zero.  This avoids downstream consumers needing to
+        # handle sparse node indices (e.g. {0, 2}) when the stored node
+        # features already correspond to a compact set of nodes.
+        ei, _ = subgraph(
+            comp_nodes_tensor,
+            data.edge_index,
+            edge_attr=None,
+            relabel_nodes=True,
+        )
+
+        if hasattr(data, "x") and data.x is not None:
+            x = data.x[comp_nodes_tensor]
+        else:
+            x = None
+
+        motif = Data(
+            x=x,
+            edge_index=ei,
+            num_nodes=len(comp_nodes),
+        )
+        # Keep track of the original node indices for potential downstream use.
+        motif.original_node_indices = comp_nodes_tensor
+        motifs.append(motif)
     return motifs
 
 
