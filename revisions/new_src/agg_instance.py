@@ -1,75 +1,235 @@
+"""Utilities for turning instance-level explanations into dataset-level insights.
+
+This module serves as the glue layer for a four-cell workflow that is common in
+our notebooks (see ``revisions/notebooks/agg_instance_walkthrough.ipynb`` for a
+complete, runnable example):
+
+1. Train an explainee and configure a :class:`torch_geometric.explain.Explainer`
+   with a user selected algorithm.
+2. Run the explainer over a dataset and aggregate the instance-level masks into
+   batches of canonical motifs per class.
+3. Compute the quantitative summary metrics defined in :mod:`.eval`.
+4. Visualise the generated motifs together with the observed class graphs via
+   :func:`.utils.eval_plot`.
+
+Every public helper exposes a minimal, well documented surface so that the
+notebook code remains concise while still being flexible in the choice of
+explainers, aggregation strategies, metrics and visualisation settings.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Union
+
 import torch
-from torch import nn
-import torch.nn.functional as F
-from torch_geometric.data import Data, Batch
-from torch_geometric.utils import subgraph
-from collections import defaultdict
-import numpy as np
-
+from torch import Tensor, nn
+from torch_geometric.data import Batch, Data
 from torch_geometric.explain import Explainer, CaptumExplainer
-from torch_geometric.explain.algorithm import GNNExplainer, PGExplainer
+from torch_geometric.explain.algorithm import DummyExplainer, ExplainerAlgorithm, GNNExplainer, PGExplainer
+from torch_geometric.utils import subgraph
 
-# --------------------------------------------------------
-# 1. Simple WL hash (works for motifs up to ~10 nodes)
-# --------------------------------------------------------
+from .eval import eval_summary
+from .utils import eval_plot
 
-def wl_hash(data: Data, hops: int = 2):
+GraphList = Sequence[Data]
+ExplanationStrategy = Callable[..., GraphList]
+
+try:  # Torch Geometric 2.4+
+    from torch_geometric.explain import Explanation
+except ImportError:  # pragma: no cover - fallback for older versions
+    Explanation = Any  # type: ignore[misc]
+
+
+# ---------------------------------------------------------------------------
+# 1.  Explainer construction
+# ---------------------------------------------------------------------------
+
+
+class ExtractProbs(nn.Module):
+    """Adapter that exposes an explainee with the interface expected by PyG.
+
+    The wrapped model is assumed to accept a :class:`~torch_geometric.data.Batch`
+    object and to return either a tensor of logits/probabilities or a mapping
+    containing ``"probs"`` or ``"logits"``.  The adapter keeps the original
+    behaviour but ensures that the explainer always receives probabilities.
+    """
+
+    def __init__(self, model: nn.Module):
+        super().__init__()
+        self.model = model
+
+    def forward(
+        self,
+        x: Tensor,
+        edge_index: Tensor,
+        edge_attr: Optional[Tensor] = None,
+        batch: Optional[Tensor] = None,
+        **kwargs: Any,
+    ) -> Tensor:
+        pyg_batch = Batch(x=x, edge_index=edge_index, batch=batch)
+        if edge_attr is not None:
+            pyg_batch.edge_attr = edge_attr
+            pyg_batch.edge_weight = edge_attr
+
+        prediction = self.model(pyg_batch, **kwargs)
+
+        if isinstance(prediction, Mapping):
+            if "probs" in prediction:
+                probs = prediction["probs"]
+            elif "logits" in prediction:
+                probs = prediction["logits"].softmax(dim=-1)
+            else:  # pragma: no cover - defensive
+                raise KeyError("Prediction dictionary must contain 'probs' or 'logits'.")
+        else:
+            probs = prediction
+            if probs.dim() == 1:
+                probs = probs.unsqueeze(0)
+            probs = probs.softmax(dim=-1)
+
+        return probs
+
+
+AlgorithmFactory = Callable[..., ExplainerAlgorithm]
+AlgorithmSpec = Union[str, ExplainerAlgorithm, AlgorithmFactory]
+
+
+def _build_algorithm(name: AlgorithmSpec, **kwargs: Any) -> ExplainerAlgorithm:
+    """Resolve ``name`` into a concrete :class:`ExplainerAlgorithm` instance."""
+
+    if isinstance(name, ExplainerAlgorithm):
+        return name
+
+    if callable(name) and not isinstance(name, str):
+        return name(**kwargs)
+
+    if not isinstance(name, str):  # pragma: no cover - defensive
+        raise TypeError("algorithm must be a string, algorithm instance or factory")
+
+    key = name.lower()
+    if key in {"gnn", "gnnexplainer"}:
+        return GNNExplainer(**kwargs)
+    if key in {"pg", "pgexplainer"}:
+        return PGExplainer(**kwargs)
+    if key in {"dummy", "random"}:
+        return DummyExplainer(**kwargs)
+    if key in {"captum_saliency", "saliency"}:
+        return CaptumExplainer(algorithm="Saliency")
+    if key in {"captum_ig", "integrated_gradients", "ig"}:
+        return CaptumExplainer(algorithm="IntegratedGradients")
+    if key.startswith("captum"):
+        algorithm = kwargs.pop("algorithm", "Saliency")
+        return CaptumExplainer(algorithm=algorithm)
+
+    raise ValueError(f"Unknown explainer algorithm '{name}'.")
+
+
+def build_explainer(
+    explainee: nn.Module,
+    *,
+    algorithm: AlgorithmSpec = "gnnexplainer",
+    algorithm_kwargs: Optional[Mapping[str, Any]] = None,
+    explanation_type: str = "model",
+    node_mask_type: Optional[str] = "object",
+    edge_mask_type: Optional[str] = "object",
+    model_config: Optional[Mapping[str, Any]] = None,
+    threshold_config: Optional[Mapping[str, Any]] = None,
+) -> Explainer:
+    """Create a ready-to-use :class:`Explainer` for the trained ``explainee``.
+
+    Parameters
+    ----------
+    explainee:
+        Trained model to be explained.
+    algorithm:
+        Either the name of a built-in algorithm (``"gnnexplainer"``,
+        ``"pgexplainer"``, ``"captum"`` variants, ``"dummy"``) or a custom
+        :class:`ExplainerAlgorithm`/callable.
+    algorithm_kwargs:
+        Optional configuration passed to the algorithm constructor.
+    explanation_type, node_mask_type, edge_mask_type, model_config,
+    threshold_config:
+        Mirrors the arguments of :class:`Explainer` for notebook convenience.
+    """
+
+    adapter = ExtractProbs(explainee)
+    algorithm_kwargs = dict(algorithm_kwargs or {})
+
+    resolved_algorithm = _build_algorithm(algorithm, **algorithm_kwargs)
+
+    model_config = dict(
+        mode="binary_classification",
+        task_level="graph",
+        return_type="probs",
+        **(model_config or {}),
+    )
+
+    return Explainer(
+        model=adapter,
+        algorithm=resolved_algorithm,
+        explanation_type=explanation_type,
+        model_config=model_config,
+        node_mask_type=node_mask_type,
+        edge_mask_type=edge_mask_type,
+        threshold_config=threshold_config,
+    )
+
+
+# ---------------------------------------------------------------------------
+# 2.  Aggregation helpers
+# ---------------------------------------------------------------------------
+
+
+def wl_hash(data: Data, hops: int = 2) -> int:
+    """Simple Weisfeiler-Lehman hash used to canonicalise motifs."""
+
     edge_index = data.edge_index
-    N = data.num_nodes
+    num_nodes = data.num_nodes
 
-    # If node features exist, use them; otherwise use degree
-    if hasattr(data, "x") and data.x is not None:
-        labels = [tuple(data.x[i].tolist()) for i in range(N)]
+    if getattr(data, "x", None) is not None:
+        labels: List[Any] = [tuple(data.x[i].tolist()) for i in range(num_nodes)]
     else:
-        deg = torch.bincount(edge_index[0], minlength=N)
+        deg = torch.bincount(edge_index[0], minlength=num_nodes)
         labels = [int(d.item()) for d in deg]
 
     for _ in range(hops):
         new_labels = []
-        for v in range(N):
+        for v in range(num_nodes):
             neigh = edge_index[1][edge_index[0] == v]
-            neigh_labels = sorted(labels[u] for u in neigh)
+            neigh_labels = sorted(labels[int(u)] for u in neigh)
             combined = (labels[v], tuple(neigh_labels))
             new_labels.append(hash(combined))
         labels = new_labels
 
-    # Graph-level hash
     return hash(tuple(sorted(labels)))
 
 
-# --------------------------------------------------------
-# 2. Extract top-p% edges → return connected components
-# --------------------------------------------------------
+def _topk_edge_components(data: Data, edge_mask: Tensor, top_p: float = 0.1) -> List[Data]:
+    """Return connected components spanned by the top ``p``% of edges."""
 
-def extract_motif_components(data: Data, edge_mask, p=0.1):
-    E = edge_mask.size(0)
-    k = max(1, int(E * p))
+    edge_mask = edge_mask.detach().float().view(-1)
+    num_edges = edge_mask.numel()
+    if num_edges == 0:
+        return []
 
-    # top edges by mask score
-    idx = torch.topk(edge_mask, k).indices
+    k = max(1, int(num_edges * top_p))
+    top_idx = torch.topk(edge_mask, k).indices
+    edge_index = data.edge_index[:, top_idx]
 
-    edge_index = data.edge_index[:, idx]
-
-    # find connected components
-    # node set involved in the selected edges
     nodes = edge_index.unique().tolist()
-
-    # adjacency map for DFS
-    adj = defaultdict(list)
-    for u, v in zip(edge_index[0], edge_index[1]):
+    adj: MutableMapping[int, List[int]] = {int(n): [] for n in nodes}
+    for u, v in zip(edge_index[0].tolist(), edge_index[1].tolist()):
         adj[int(u)].append(int(v))
         adj[int(v)].append(int(u))
 
     visited = set()
-    comps = []
-
+    components: List[List[int]] = []
     for node in nodes:
         if node in visited:
             continue
         stack = [node]
-        comp = []
+        comp: List[int] = []
         visited.add(node)
-
         while stack:
             cur = stack.pop()
             comp.append(cur)
@@ -77,248 +237,279 @@ def extract_motif_components(data: Data, edge_mask, p=0.1):
                 if nxt not in visited:
                     visited.add(nxt)
                     stack.append(nxt)
+        components.append(comp)
 
-        comps.append(comp)
-
-    # Build motif subgraphs
-    motifs = []
-    for comp_nodes in comps:
-        comp_nodes_tensor = torch.tensor(comp_nodes, dtype=torch.long)
-
-        # Relabel the induced subgraph so that its node indices are contiguous
-        # starting from zero.  This avoids downstream consumers needing to
-        # handle sparse node indices (e.g. {0, 2}) when the stored node
-        # features already correspond to a compact set of nodes.
-        ei, _ = subgraph(
-            comp_nodes_tensor,
-            data.edge_index,
-            edge_attr=None,
-            relabel_nodes=True,
-        )
-
-        if hasattr(data, "x") and data.x is not None:
-            x = data.x[comp_nodes_tensor]
-        else:
-            x = None
-
-        motif = Data(
-            x=x,
-            edge_index=ei,
-            num_nodes=len(comp_nodes),
-        )
-        # Keep track of the original node indices for potential downstream use.
-        motif.original_node_indices = comp_nodes_tensor
+    motifs: List[Data] = []
+    for comp_nodes in components:
+        node_idx = torch.tensor(comp_nodes, dtype=torch.long)
+        ei, _ = subgraph(node_idx, data.edge_index, relabel_nodes=True)
+        x = data.x[node_idx] if getattr(data, "x", None) is not None else None
+        motif = Data(x=x, edge_index=ei, num_nodes=len(comp_nodes))
+        motif.original_node_indices = node_idx
         motifs.append(motif)
     return motifs
 
 
-# --------------------------------------------------------
-# 3. Instance-level explainer hook
-# --------------------------------------------------------
-
-class ExtractProbs(nn.Module):
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-    
-    def forward(self, x, edge_index, edge_attr=None, batch=None):
-        out = self.model(
-            batch=Batch(x=x, edge_index=edge_index, batch=batch),
-            embeds=None,
-            embeds_last=None,
-            edge_weight=edge_attr, 
-        )
-        return out["probs"]        
-
-def run_instance_explainer(
-    model,
-    data,
-    method="gnnexplainer",
-    device=None,
-    epochs=200,
-):
-    """
-    Returns:
-       edge_mask: [E]
-       node_mask: [N]
-    """
-
-    model.eval()
-    device = device or next(model.parameters()).device
-    data = data.to(device)
-
-    model_forward = ExtractProbs(model) 
-
-    # Prepare fields
-    x = data.x
-    edge_index = data.edge_index
-    edge_weight = getattr(data, "edge_weight", None)
-    batch_vec = getattr(
-        data, "batch",
-        torch.zeros(data.num_nodes, dtype=torch.long, device=device)
-    )
+def _node_threshold_components(data: Data, node_mask: Tensor, threshold: float = 0.5) -> List[Data]:
+    mask = node_mask.detach().float().view(-1)
+    selected = (mask >= threshold).nonzero(as_tuple=False).view(-1)
+    if selected.numel() == 0:
+        return []
+    ei, _ = subgraph(selected, data.edge_index, relabel_nodes=True)
+    x = data.x[selected] if getattr(data, "x", None) is not None else None
+    motif = Data(x=x, edge_index=ei, num_nodes=int(selected.numel()))
+    motif.original_node_indices = selected
+    return [motif]
 
 
-    # =============================================================
-    # Construct Explainer with correct model_config
-    # =============================================================
-    method = method.lower()
+def _normalize_mask(mask: Optional[Tensor]) -> Optional[Tensor]:
+    if mask is None:
+        return None
+    mask = mask.detach().float().view(-1)
+    if mask.numel() == 0:
+        return mask
+    mask = (mask - mask.min()) / (mask.max() - mask.min() + 1e-8)
+    return mask
 
-    # ----------------------------
-    # 1) GNNExplainer
-    # ----------------------------
-    if method in ["gnnexplainer", "gnn"]:
-        algorithm = GNNExplainer(epochs=epochs)
 
-        explainer = Explainer(
-            model=model_forward,
-            algorithm=algorithm,
-            explanation_type="model",
-            node_mask_type="object",
-            edge_mask_type="object",
-            model_config=dict(
-                mode="binary_classification",
-                task_level="graph",
-                return_type="probs",        
-            )
-        )
+def _resolve_strategy(name_or_callable: Union[str, ExplanationStrategy]) -> ExplanationStrategy:
+    if callable(name_or_callable) and not isinstance(name_or_callable, str):
+        return name_or_callable
 
-    # ----------------------------
-    # 2) PGExplainer
-    # ----------------------------
-    elif method in ["pgexplainer", "pg"]:
-        algorithm = PGExplainer(epochs=epochs, lr=0.003)
+    if not isinstance(name_or_callable, str):  # pragma: no cover - defensive
+        raise TypeError("aggregation strategy must be a callable or string")
 
-        explainer = Explainer(
-            model=model_forward,
-            algorithm=algorithm,
-            explanation_type="model",
-            edge_mask_type="object",
-            node_mask_type=None,
-            model_config=dict(
-                mode="binary_classification",
-                task_level="graph",
-                return_type="probs",        
-            )
-        )
+    key = name_or_callable.lower()
+    if key in {"wl_topk", "wl", "graphframerx"}:
+        def strategy(data: Data, explanation: Explanation, *, top_p: float = 0.1, wl_hops: int = 2, **_: Any) -> GraphList:
+            edge_mask = explanation.edge_mask
+            if edge_mask is None:
+                node_mask = explanation.node_mask
+                if node_mask is None:
+                    return []
+                edge_mask = node_mask[data.edge_index[0]] * 0.5 + node_mask[data.edge_index[1]] * 0.5
+            edge_mask = _normalize_mask(edge_mask)
+            motifs = _topk_edge_components(data, edge_mask, top_p=top_p)
+            unique: Dict[int, Data] = {}
+            for motif in motifs:
+                unique.setdefault(wl_hash(motif, hops=wl_hops), motif)
+            return list(unique.values())
+        return strategy
 
-    # ----------------------------
-    # 3) Captum-based explainers
-    # ----------------------------
-    elif method in ["saliency", "grad", "integrated", "ig", "integrated_gradients"]:
+    if key in {"node_threshold", "saliency", "gradient"}:
+        def strategy(data: Data, explanation: Explanation, *, threshold: float = 0.5, **_: Any) -> GraphList:
+            node_mask = explanation.node_mask
+            if node_mask is None:
+                return []
+            node_mask = _normalize_mask(node_mask)
+            return _node_threshold_components(data, node_mask, threshold=threshold)
+        return strategy
 
-        algorithm = "Saliency" if method in ["saliency", "grad"] else "IntegratedGradients"
+    raise ValueError(f"Unknown aggregation strategy '{name_or_callable}'.")
 
-        algorithm = CaptumExplainer(algorithm=algorithm)
 
-        explainer = Explainer(
-            model=model_forward,
-            algorithm=algorithm,
-            explanation_type="model",
-            node_mask_type="object",
-            edge_mask_type=None,           # we'll compute edge mask manually
-            model_config=dict(
-                mode="binary_classification",
-                task_level="graph",
-                return_type="probs",      # <--- FIX
-            )
-        )
+@dataclass
+class AggregationResult:
+    """Container bundling motif batches with metadata for downstream cells."""
 
+    by_class: Dict[int, Batch]
+    raw_by_class: Dict[int, List[Data]]
+
+    def graphs_for(self, class_id: int) -> GraphList:
+        batch = self.by_class.get(class_id)
+        if batch is None:
+            return []
+        return batch.to_data_list()
+
+
+def _detect_module_device(module: Optional[nn.Module]) -> torch.device:
+    if module is None:
+        return torch.device("cpu")
+    for param in module.parameters():
+        return param.device
+    for buffer in module.buffers():
+        return buffer.device
+    return torch.device("cpu")
+
+
+def _predict_class_from_model(model: nn.Module, graph: Data, device: torch.device) -> int:
+    if isinstance(graph, Batch):
+        batch = graph
     else:
-        raise ValueError(f"Unknown explainer '{method}'.")
+        batch = Batch.from_data_list([graph])
+    with torch.inference_mode():
+        batch = batch.to(device)
+        prediction = model(batch)
+        if isinstance(prediction, Mapping):
+            if "probs" in prediction:
+                probs = prediction["probs"]
+            elif "logits" in prediction:
+                probs = prediction["logits"].softmax(dim=-1)
+            else:
+                raise KeyError("Prediction dictionary must contain 'probs' or 'logits'.")
+        else:
+            probs = prediction
+            if probs.dim() == 1:
+                probs = probs.unsqueeze(0)
+            probs = probs.softmax(dim=-1)
+    return int(probs.argmax(dim=-1).item())
 
 
-    # =============================================================
-    # Apply explainer (modern API)
-    # =============================================================
-    explanation = explainer(
-        x=x,
-        edge_index=edge_index,
-        edge_attr=edge_weight,
-        batch=batch_vec,
-    )
+def aggregate_instance_explanations(
+    dataset: Iterable[Data],
+    explainer: Explainer,
+    *,
+    explainee: Optional[nn.Module] = None,
+    strategy: Union[str, ExplanationStrategy] = "wl_topk",
+    strategy_kwargs: Optional[Mapping[str, Any]] = None,
+    device: Optional[Union[str, torch.device]] = None,
+    class_getter: Optional[Callable[[Data], int]] = None,
+) -> AggregationResult:
+    """Aggregate explanations into motif batches grouped by predicted class.
 
-    # =============================================================
-    # Extract masks
-    # =============================================================
-    node_mask = explanation.node_mask
-    edge_mask = explanation.edge_mask
-
-    # If no edge mask (e.g. Captum), derive from node mask
-    if edge_mask is None:
-        src, dst = edge_index
-        edge_mask = 0.5 * (node_mask[src] + node_mask[dst])
-
-    # Normalize
-    edge_mask = (edge_mask - edge_mask.min()) / (edge_mask.max() - edge_mask.min() + 1e-8)
-    node_mask = (node_mask - node_mask.min()) / (node_mask.max() - node_mask.min() + 1e-8)
-
-    return edge_mask.cpu(), node_mask.cpu()
-
-
-# --------------------------------------------------------
-# 4. Class prediction function
-# --------------------------------------------------------
-
-def predict_class(model, data):
-    out = model(data.x, data.edge_index, data.batch)
-    return int(out.argmax(dim=-1).item())
-
-
-# --------------------------------------------------------
-# 5. Aggregation Pipeline
-# --------------------------------------------------------
-
-def aggregate_motifs_by_class(
-    dataset,
-    model,
-    explainer_name="gnnexplainer",
-    p=0.10,          # top p% edges used to extract motifs
-    wl_hops=2,       # WL hashing radius
-    device=None,
-):
-    """
-    Returns:
-        dict: class_id -> list of PyG Data subgraphs (motifs)
+    Parameters
+    ----------
+    dataset:
+        Iterable of :class:`~torch_geometric.data.Data` objects to explain.
+    explainer:
+        Configured :class:`Explainer` returned by :func:`build_explainer`.
+    explainee:
+        Original model used to predict classes.  Required if ``class_getter`` is
+        not supplied.
+    strategy / strategy_kwargs:
+        Aggregation scheme.  ``"wl_topk"`` follows the GraphFramEx-style
+        pipeline (top edge components + WL hashing).  ``"node_threshold``
+        aggregates salient node clusters.  Custom callables are also supported.
+    class_getter:
+        Optional callable that maps a :class:`Data` object to its class label.
+        When omitted the predicted label from ``explainee`` is used.
     """
 
-    model.eval()
-    device = device or next(model.parameters()).device
+    if class_getter is None and explainee is None:
+        raise ValueError("Either explainee or class_getter must be provided.")
 
-    motifs_by_class = defaultdict(list)
+    if device is not None:
+        device = torch.device(device)
+    else:
+        device = _detect_module_device(explainee)
+    strategy_fn = _resolve_strategy(strategy)
+    strategy_kwargs = dict(strategy_kwargs or {})
 
-    for data in dataset:
+    motif_lists: Dict[int, List[Data]] = {}
+
+    for graph in dataset:
+        data = graph
         data = data.to(device)
+        num_nodes = getattr(data, "num_nodes", None)
+        if num_nodes is None and getattr(data, "x", None) is not None:
+            num_nodes = data.x.size(0)
+        batch_vec = getattr(
+            data,
+            "batch",
+            torch.zeros(num_nodes or 0, dtype=torch.long, device=device),
+        )
+        edge_attr = getattr(data, "edge_attr", getattr(data, "edge_weight", None))
 
-        # --------------------------------------------------
-        # 1. Run instance-level explainer → edge_mask
-        # --------------------------------------------------
-        edge_mask, node_mask = run_instance_explainer(
-            model=model,
-            data=data,
-            method=explainer_name,
-            device=device,
+        explanation = explainer(
+            x=data.x,
+            edge_index=data.edge_index,
+            edge_attr=edge_attr,
+            batch=batch_vec,
         )
 
-        # normalize mask
-        edge_mask = (edge_mask - edge_mask.min()) / (edge_mask.max() - edge_mask.min() + 1e-8)
+        data_cpu = data.cpu()
+        explanation_cpu = explanation.cpu()
 
-        # --------------------------------------------------
-        # 2. Extract motif components from this graph
-        # --------------------------------------------------
-        comps = extract_motif_components(data.cpu(), edge_mask.cpu(), p=p)
+        if class_getter is None:
+            class_id = _predict_class_from_model(explainee, data_cpu, device)
+        else:
+            class_id = class_getter(data_cpu)
 
-        # --------------------------------------------------
-        # 3. Determine predicted class
-        # --------------------------------------------------
-        pred_logits = model(data)["logits"]
-        c = int(pred_logits.argmax(dim=-1).item())
+        motifs = strategy_fn(data_cpu, explanation_cpu, **strategy_kwargs)
+        if not motifs:
+            continue
+        motif_lists.setdefault(class_id, []).extend(motifs)
 
-        # --------------------------------------------------
-        # 4. Canonicalize & store motifs
-        # --------------------------------------------------
-        for sub in comps:
-            key = wl_hash(sub, hops=wl_hops)
-            motifs_by_class[c].append(sub)   # store motif directly
+    batch_by_class: Dict[int, Batch] = {}
+    for cls, motifs in motif_lists.items():
+        if motifs:
+            batch_by_class[cls] = Batch.from_data_list(motifs)
 
-    return motifs_by_class
+    return AggregationResult(by_class=batch_by_class, raw_by_class=motif_lists)
+
+
+# ---------------------------------------------------------------------------
+# 3.  Metric + plotting wrappers
+# ---------------------------------------------------------------------------
+
+
+def _ensure_graph_sequence(graphs: Union[Batch, GraphList, None]) -> List[Data]:
+    if graphs is None:
+        return []
+    if isinstance(graphs, Batch):
+        return graphs.to_data_list()
+    return list(graphs)
+
+
+def run_eval_summary(
+    explainee: nn.Module,
+    aggregation: AggregationResult,
+    *,
+    observed_class_0: Union[Batch, GraphList],
+    observed_class_1: Union[Batch, GraphList],
+    dist_to_0: nn.Module,
+    dist_to_1: nn.Module,
+) -> float:
+    """Convenience wrapper that plugs motif batches into :func:`eval_summary`."""
+
+    gen_graphs_0 = aggregation.graphs_for(0)
+    gen_graphs_1 = aggregation.graphs_for(1)
+    obs_0 = _ensure_graph_sequence(observed_class_0)
+    obs_1 = _ensure_graph_sequence(observed_class_1)
+
+    return eval_summary(
+        explainee,
+        gen_graphs_0,
+        gen_graphs_1,
+        obs_0,
+        obs_1,
+        dist_to_0,
+        dist_to_1,
+    )
+
+
+def plot_eval(
+    explainee: nn.Module,
+    aggregation: AggregationResult,
+    *,
+    observed_class_0: Union[Batch, GraphList],
+    observed_class_1: Union[Batch, GraphList],
+    ged_model: nn.Module,
+    dataset: Optional[Any] = None,
+    **plot_kwargs: Any,
+) -> None:
+    """Visualise aggregated motifs next to observed class graphs."""
+
+    gen_graphs_0 = aggregation.graphs_for(0)
+    gen_graphs_1 = aggregation.graphs_for(1)
+
+    return eval_plot(
+        explainee=explainee,
+        gen_graphs_0=gen_graphs_0,
+        gen_graphs_1=gen_graphs_1,
+        obs_graphs_0=_ensure_graph_sequence(observed_class_0),
+        obs_graphs_1=_ensure_graph_sequence(observed_class_1),
+        ged_model=ged_model,
+        dataset=dataset,
+        **plot_kwargs,
+    )
+
+
+__all__ = [
+    "build_explainer",
+    "aggregate_instance_explanations",
+    "run_eval_summary",
+    "plot_eval",
+    "wl_hash",
+    "AggregationResult",
+]
