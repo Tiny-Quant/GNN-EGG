@@ -113,6 +113,7 @@ class neural_approx_ged_dist(_BaseGraphLevelDistance):
 
     def __init__(
         self, data: Sequence[Data], model: nn.Module, 
+        use_omega: bool = False, 
         explainee: Optional[nn.Module] = None, 
         cls_idx: Optional[int] = None
     ):
@@ -120,6 +121,7 @@ class neural_approx_ged_dist(_BaseGraphLevelDistance):
         self.model = model.eval()
         self.explainee = explainee
         self.cls_idx = cls_idx
+        self.use_omega = use_omega
 
     def forward(self, cont_data):
         cont_data = convert_hard_to_soft_edges(cont_data) 
@@ -134,7 +136,7 @@ class neural_approx_ged_dist(_BaseGraphLevelDistance):
         
         dist = self.model(cont_data, obs_data)
 
-        if self.explainee is not None and self.cls_idx is not None:  
+        if self.use_omega:  
             out = self.explainee(cont_data)
             dist = (out["probs"][:, self.cls_idx] - 0.5) * dist
         
@@ -178,8 +180,9 @@ class mcs_soft_graph_dist(_BaseGraphLevelDistance):
         temperature: float = 0.1,
         sinkhorn_iters: int = 10,
         eps: float = 1e-8,
+        use_omega: bool = False, 
         explainee: Optional[nn.Module] = None, 
-        cls_idx: Optional[int] = None
+        cls_idx: Optional[int] = None, 
     ) -> None:
         super().__init__(data)
         if temperature <= 0:
@@ -192,6 +195,7 @@ class mcs_soft_graph_dist(_BaseGraphLevelDistance):
         self.eps = float(eps)
         self.explainee = explainee
         self.cls_idx = cls_idx
+        self.use_omega = use_omega
 
     def forward(self, cont_data: Batch) -> torch.Tensor:
         """Compute the mean soft-MCS distance between generated and observed graphs."""
@@ -216,8 +220,8 @@ class mcs_soft_graph_dist(_BaseGraphLevelDistance):
             distances.append(self._pair_distance(generated_graph, observed_graph))
 
         stacked = torch.stack(distances)
-        
-        if self.explainee is not None and self.cls_idx is not None:  
+       
+        if self.use_omega:  
             out = self.explainee(cont_data)
             stacked = (out["probs"][:, self.cls_idx] - 0.5) * stacked
 
@@ -328,6 +332,7 @@ class spectral_dist(_BaseGraphLevelDistance):
         p: float = 2.0,
         symmetrize: bool = True,
         eps: float = 1e-8,
+        use_omega: bool = False, 
         explainee: Optional[nn.Module] = None, 
         cls_idx: Optional[int] = None
     ) -> None:
@@ -349,6 +354,7 @@ class spectral_dist(_BaseGraphLevelDistance):
 
         self.explainee = explainee
         self.cls_idx = cls_idx
+        self.use_omega = use_omega
 
     def forward(self, cont_data: Batch) -> torch.Tensor:
         cont_data = convert_hard_to_soft_edges(cont_data) 
@@ -373,7 +379,7 @@ class spectral_dist(_BaseGraphLevelDistance):
 
         dist = torch.stack(distances) 
 
-        if self.explainee is not None and self.cls_idx is not None:  
+        if self.use_omega: 
             out = self.explainee(cont_data)
             dist = (out["probs"][:, self.cls_idx] - 0.5) * dist
         
@@ -499,6 +505,7 @@ class wl_graph_kernel_dist(_BaseGraphLevelDistance):
         dropout: float = 0.0,
         use_layer_norm: bool = False,
         eps: float = 1e-8,
+        use_omega: bool = False, 
         explainee: Optional[nn.Module] = None, 
         cls_idx: Optional[int] = None
     ) -> None:
@@ -541,6 +548,7 @@ class wl_graph_kernel_dist(_BaseGraphLevelDistance):
 
         self.explainee = explainee
         self.cls_idx = cls_idx
+        self.use_omega = use_omega
 
     def forward(self, cont_data: Batch) -> torch.Tensor:
         cont_data = convert_hard_to_soft_edges(cont_data)
@@ -575,7 +583,7 @@ class wl_graph_kernel_dist(_BaseGraphLevelDistance):
 
         dist = torch.stack(distances)
         
-        if self.explainee is not None and self.cls_idx is not None:  
+        if self.use_omega:  
             out = self.explainee(cont_data)
             dist = (out["probs"][:, self.cls_idx] - 0.5) * dist
 
