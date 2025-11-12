@@ -25,7 +25,16 @@ dependencies = [
     "torch-sparse>=0.6.18",
     "torch-cluster>=1.6.3",
     "torch-spline-conv>=1.2.2",
+    "papermill>=2.6.0",
 ]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+package-dir = {"" = "revisions"}
+packages = ["new_src"]
 
 [tool.uv.sources]
 "pyg_lib" = { index = "pyg-cu126" }
