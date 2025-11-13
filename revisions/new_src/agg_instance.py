@@ -1,7 +1,8 @@
 """Utilities for turning instance-level explanations into dataset-level insights.
 
 This module serves as the glue layer for a four-cell workflow that is common in
-our notebooks:
+our notebooks (see ``revisions/notebooks/agg_instance_walkthrough.ipynb`` for a
+complete, runnable example):
 
 1. Train an explainee and configure a :class:`torch_geometric.explain.Explainer`
    with a user selected algorithm.
