@@ -141,7 +141,10 @@ class GCNClassifier(nn.Module):
                 edge_index = batch.edge_index.to(device)
                 edge_weight = None if edge_weight is None else edge_weight.to(device)
                 node_weight = None if node_weight is None else node_weight.to(device)
-                bvec = batch.batch.to(device)
+                if batch.batch is not None: 
+                    bvec = batch.batch.to(device)
+                else: 
+                    bvec = None
 
                 h = self.conv(batch.x, edge_index, edge_weight=edge_weight)
 
