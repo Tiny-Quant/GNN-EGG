@@ -551,6 +551,8 @@ def aggregate_instance_explanations(
     label_motif_lists: Dict[int, List[Data]] = {}
     total_with_labels = 0
     correct_predictions = 0
+    label_counts: Dict[int, int] = {}
+    predicted_counts: Dict[int, int] = {}
 
     progress_tracker = _build_progress_tracker(
         progress,
@@ -592,6 +594,14 @@ def aggregate_instance_explanations(
                     data_cpu, explainee, device, prefer_prediction=True
                 )
 
+            if true_label is not None:
+                label_counts[true_label] = label_counts.get(true_label, 0) + 1
+
+            if predicted_class is not None:
+                predicted_counts[predicted_class] = predicted_counts.get(
+                    predicted_class, 0
+                ) + 1
+
             if predicted_class is not None and true_label is not None:
                 total_with_labels += 1
                 if predicted_class == true_label:
@@ -610,6 +620,22 @@ def aggregate_instance_explanations(
         progress_tracker.close()
 
     if class_getter is None:
+        missing_predicted_classes = set(predicted_counts) - set(motif_lists)
+        missing_labeled_classes = set(label_counts) - set(motif_lists)
+
+        if missing_predicted_classes:
+            warnings.warn(
+                "No motifs were produced for classes predicted by the explainee; "
+                "evaluation metrics that rely on generated motifs may fail."
+            )
+
+        if missing_labeled_classes:
+            warnings.warn(
+                "No motifs were produced for classes present in labels; evaluation "
+                "may fall back to empty batches unless additional samples are "
+                "processed."
+            )
+
         missing_classes = set(label_motif_lists) - set(motif_lists)
         if missing_classes:
             warnings.warn(
@@ -638,6 +664,12 @@ def aggregate_instance_explanations(
     for cls, motifs in motif_lists.items():
         if motifs:
             batch_by_class[cls] = Batch.from_data_list(motifs)
+
+    if not batch_by_class:
+        warnings.warn(
+            "No motifs were generated; downstream evaluation that expects "
+            "non-empty motif batches will fail."
+        )
 
     return AggregationResult(by_class=batch_by_class, raw_by_class=motif_lists)
 
