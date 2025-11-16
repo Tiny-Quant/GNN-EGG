@@ -5,10 +5,10 @@
 # and metadata attached directly to the dataset.
 
 import matplotlib
-# matplotlib.use("Agg")
-# import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+
+# Use a non-interactive backend for headless environments (e.g., scripted runs).
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 
 import torch
@@ -410,14 +410,7 @@ def eval_plot(
 
     fig_width = max(1, max_limit * 2) * 4.5
     fig_height = len(class_pairs) * 4.5
-    #fig, axes = plt.subplots(len(class_pairs), max_limit * 2, figsize=(fig_width, fig_height))
-    fig = Figure(figsize=(fig_width, fig_height))
-    FigureCanvas(fig)  # attach an Agg canvas
-
-    axes = fig.subplots(
-        nrows=len(class_pairs),
-        ncols=max_limit * 2,
-    )
+    fig, axes = plt.subplots(len(class_pairs), max_limit * 2, figsize=(fig_width, fig_height))
 
 
     axes_array = np.array(axes, copy=False)
@@ -491,5 +484,4 @@ def eval_plot(
 
     fig.suptitle("Generated vs Observed graph pairs", fontsize=16)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
-    #plt.show()
-    fig.show()
+    plt.show()
