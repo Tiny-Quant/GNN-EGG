@@ -20,7 +20,11 @@ explainers, aggregation strategies, metrics and visualisation settings.
 from __future__ import annotations
 
 from dataclasses import dataclass
+import importlib.util
+import sys
+import time
 from typing import Any, Callable, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Union
+import warnings
 
 import torch
 from torch import Tensor, nn
@@ -308,6 +312,94 @@ def _resolve_strategy(name_or_callable: Union[str, ExplanationStrategy]) -> Expl
     raise ValueError(f"Unknown aggregation strategy '{name_or_callable}'.")
 
 
+def _safe_len(obj: Any) -> Optional[int]:
+    try:
+        return len(obj)  # type: ignore[arg-type]
+    except Exception:  # pragma: no cover - defensive
+        return None
+
+
+class _ProgressTracker:
+    def step(self) -> None:
+        return None
+
+    def close(self) -> None:  # pragma: no cover - close is a no-op by default
+        return None
+
+
+class _TqdmTracker(_ProgressTracker):
+    def __init__(self, total: Optional[int], desc: str):
+        from tqdm.auto import tqdm
+
+        self._bar = tqdm(total=total, desc=desc)
+
+    def step(self) -> None:  # pragma: no cover - exercised in notebooks
+        self._bar.update()
+
+    def close(self) -> None:  # pragma: no cover - exercised in notebooks
+        self._bar.close()
+
+
+class _CallbackTracker(_ProgressTracker):
+    def __init__(self, callback: Callable[[int, Optional[int]], None], total: Optional[int]):
+        self._callback = callback
+        self._total = total
+        self._count = 0
+
+    def step(self) -> None:
+        self._count += 1
+        self._callback(self._count, self._total)
+
+
+class _PrintTracker(_ProgressTracker):
+    def __init__(self, total: Optional[int], desc: str, every: int = 10):
+        self._total = total
+        self._count = 0
+        self._every = max(1, every)
+        self._desc = desc
+        self._last_emit = time.time()
+
+    def _should_emit(self) -> bool:
+        if self._count % self._every == 0:
+            return True
+        # throttle to at most once per second to avoid noisy logs
+        now = time.time()
+        if now - self._last_emit >= 1.0:
+            self._last_emit = now
+            return True
+        return False
+
+    def step(self) -> None:
+        self._count += 1
+        if not self._should_emit():
+            return
+
+        if self._total is None:
+            message = f"{self._desc}: processed {self._count} graphs"
+        else:
+            message = f"{self._desc}: processed {self._count}/{self._total} graphs"
+        print(message, file=sys.stderr)
+
+
+def _build_progress_tracker(
+    progress: Union[bool, Callable[[int, Optional[int]], None]],
+    *,
+    total: Optional[int],
+    desc: str,
+    every: int,
+) -> _ProgressTracker:
+    if progress is False:
+        return _ProgressTracker()
+
+    if callable(progress):
+        return _CallbackTracker(progress, total)
+
+    if importlib.util.find_spec("tqdm") is not None:
+        return _TqdmTracker(total, desc)
+
+    return _PrintTracker(total, desc, every=every)
+
+
 @dataclass
 class AggregationResult:
     """Container bundling motif batches with metadata for downstream cells."""
@@ -355,6 +447,54 @@ def _predict_class_from_model(model: nn.Module, graph: Data, device: torch.devic
     return int(probs.argmax(dim=-1).item())
 
 
+def _graph_label(graph: Data) -> Optional[int]:
+    label = getattr(graph, "y", None)
+    if label is None:
+        return None
+    if isinstance(label, Tensor):
+        if label.numel() != 1:
+            return None
+        return int(label.view(-1)[0].item())
+    try:
+        return int(label)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return None
+
+
+def _resolve_graph_class(
+    graph: Data,
+    explainee: Optional[nn.Module],
+    device: torch.device,
+    *,
+    prefer_prediction: bool = True,
+) -> tuple[int, Optional[int], Optional[int]]:
+    """Return the grouping class along with predicted/label metadata.
+
+    Parameters
+    ----------
+    prefer_prediction:
+        When ``True`` (default), use the explainee's prediction if available and
+        only fall back to the ground-truth label when no prediction path is
+        provided.
+    """
+
+    label = _graph_label(graph)
+    prediction: Optional[int] = None
+    if explainee is not None:
+        prediction = _predict_class_from_model(explainee, graph, device)
+
+    if prefer_prediction and prediction is not None:
+        return prediction, prediction, label
+    if label is not None:
+        return label, prediction, label
+    if prediction is not None:
+        return prediction, prediction, label
+    raise ValueError(
+        "Graph does not contain a scalar 'y' attribute; "
+        "provide class_getter or explainee to predict labels."
+    )
+
+
 def aggregate_instance_explanations(
     dataset: Iterable[Data],
     explainer: Explainer,
@@ -364,6 +504,9 @@ def aggregate_instance_explanations(
     strategy_kwargs: Optional[Mapping[str, Any]] = None,
     device: Optional[Union[str, torch.device]] = None,
     class_getter: Optional[Callable[[Data], int]] = None,
+    progress: Union[bool, Callable[[int, Optional[int]], None]] = False,
+    progress_desc: str = "Mining motifs",
+    progress_every: int = 10,
 ) -> AggregationResult:
     """Aggregate explanations into motif batches grouped by predicted class.
 
@@ -374,19 +517,28 @@ def aggregate_instance_explanations(
     explainer:
         Configured :class:`Explainer` returned by :func:`build_explainer`.
     explainee:
-        Original model used to predict classes.  Required if ``class_getter`` is
-        not supplied.
+        Original model used to predict classes when a graph does not expose a
+        scalar ``y`` attribute and ``class_getter`` is not supplied.
     strategy / strategy_kwargs:
         Aggregation scheme.  ``"wl_topk"`` follows the GraphFramEx-style
         pipeline (top edge components + WL hashing).  ``"node_threshold``
         aggregates salient node clusters.  Custom callables are also supported.
     class_getter:
         Optional callable that maps a :class:`Data` object to its class label.
-        When omitted the predicted label from ``explainee`` is used.
+        When omitted the helper will group by the explainee's prediction when
+        possible, otherwise it will fall back to a scalar ``data.y`` label.
+    progress:
+        When ``True`` or a callback, track mining progress.  If ``tqdm`` is
+        installed a progress bar is used; otherwise simple stderr updates are
+        emitted every ``progress_every`` graphs.  A callable receives
+        ``(processed_count, total_or_none)`` and can be used to integrate with
+        custom loggers.
+    progress_desc:
+        Description shown next to the progress output (e.g., tqdm label).
+    progress_every:
+        Interval in graphs between stdout updates when ``tqdm`` is not
+        available and no callback is supplied.
     """
-
-    if class_getter is None and explainee is None:
-        raise ValueError("Either explainee or class_getter must be provided.")
 
     if device is not None:
         device = torch.device(device)
@@ -396,44 +548,128 @@ def aggregate_instance_explanations(
     strategy_kwargs = dict(strategy_kwargs or {})
 
     motif_lists: Dict[int, List[Data]] = {}
+    label_motif_lists: Dict[int, List[Data]] = {}
+    total_with_labels = 0
+    correct_predictions = 0
+    label_counts: Dict[int, int] = {}
+    predicted_counts: Dict[int, int] = {}
 
-    for graph in dataset:
-        data = graph
-        data = data.to(device)
-        num_nodes = getattr(data, "num_nodes", None)
-        if num_nodes is None and getattr(data, "x", None) is not None:
-            num_nodes = data.x.size(0)
-        batch_vec = getattr(
-            data,
-            "batch",
-            torch.zeros(num_nodes or 0, dtype=torch.long, device=device),
+    progress_tracker = _build_progress_tracker(
+        progress,
+        total=_safe_len(dataset),
+        desc=progress_desc,
+        every=progress_every,
+    )
+
+    try:
+        for graph in dataset:
+            data = graph
+            data = data.to(device)
+            num_nodes = getattr(data, "num_nodes", None)
+            if num_nodes is None and getattr(data, "x", None) is not None:
+                num_nodes = data.x.size(0)
+            batch_vec = getattr(
+                data,
+                "batch",
+                torch.zeros(num_nodes or 0, dtype=torch.long, device=device),
+            )
+            edge_attr = getattr(data, "edge_attr", getattr(data, "edge_weight", None))
+
+            explanation = explainer(
+                x=data.x,
+                edge_index=data.edge_index,
+                edge_attr=edge_attr,
+                batch=batch_vec,
+            )
+
+            data_cpu = data.cpu()
+            explanation_cpu = explanation.cpu()
+
+            if class_getter is not None:
+                class_id = class_getter(data_cpu)
+                predicted_class = None
+                true_label = _graph_label(data_cpu)
+            else:
+                class_id, predicted_class, true_label = _resolve_graph_class(
+                    data_cpu, explainee, device, prefer_prediction=True
+                )
+
+            if true_label is not None:
+                label_counts[true_label] = label_counts.get(true_label, 0) + 1
+
+            if predicted_class is not None:
+                predicted_counts[predicted_class] = predicted_counts.get(
+                    predicted_class, 0
+                ) + 1
+
+            if predicted_class is not None and true_label is not None:
+                total_with_labels += 1
+                if predicted_class == true_label:
+                    correct_predictions += 1
+
+            motifs = strategy_fn(data_cpu, explanation_cpu, **strategy_kwargs)
+            if not motifs:
+                progress_tracker.step()
+                continue
+            motif_lists.setdefault(class_id, []).extend(motifs)
+            if true_label is not None:
+                label_motif_lists.setdefault(true_label, []).extend(motifs)
+
+            progress_tracker.step()
+    finally:
+        progress_tracker.close()
+
+    if class_getter is None:
+        missing_predicted_classes = set(predicted_counts) - set(motif_lists)
+        missing_labeled_classes = set(label_counts) - set(motif_lists)
+
+        if missing_predicted_classes:
+            warnings.warn(
+                "No motifs were produced for classes predicted by the explainee; "
+                "evaluation metrics that rely on generated motifs may fail."
+            )
+
+        if missing_labeled_classes:
+            warnings.warn(
+                "No motifs were produced for classes present in labels; evaluation "
+                "may fall back to empty batches unless additional samples are "
+                "processed."
+            )
+
+        missing_classes = set(label_motif_lists) - set(motif_lists)
+        if missing_classes:
+            warnings.warn(
+                "No motifs were produced for classes present in labels but not "
+                "predicted by the explainee; falling back to label-based grouping "
+                "for these classes to avoid empty evaluation batches."
+            )
+            for cls in missing_classes:
+                motifs = label_motif_lists.get(cls)
+                if motifs:
+                    motif_lists.setdefault(cls, []).extend(motifs)
+
+    if (
+        explainee is not None
+        and class_getter is None
+        and total_with_labels > 0
+        and correct_predictions == 0
+    ):
+        warnings.warn(
+            "Explainee predictions disagreed with every available label; "
+            "aggregated motifs primarily reflect model outputs rather than "
+            "ground-truth classes."
         )
-        edge_attr = getattr(data, "edge_attr", getattr(data, "edge_weight", None))
-
-        explanation = explainer(
-            x=data.x,
-            edge_index=data.edge_index,
-            edge_attr=edge_attr,
-            batch=batch_vec,
-        )
-
-        data_cpu = data.cpu()
-        explanation_cpu = explanation.cpu()
-
-        if class_getter is None:
-            class_id = _predict_class_from_model(explainee, data_cpu, device)
-        else:
-            class_id = class_getter(data_cpu)
-
-        motifs = strategy_fn(data_cpu, explanation_cpu, **strategy_kwargs)
-        if not motifs:
-            continue
-        motif_lists.setdefault(class_id, []).extend(motifs)
 
     batch_by_class: Dict[int, Batch] = {}
     for cls, motifs in motif_lists.items():
         if motifs:
             batch_by_class[cls] = Batch.from_data_list(motifs)
+
+    if not batch_by_class:
+        warnings.warn(
+            "No motifs were generated; downstream evaluation that expects "
+            "non-empty motif batches will fail."
+        )
 
     return AggregationResult(by_class=batch_by_class, raw_by_class=motif_lists)
 
