@@ -9,6 +9,9 @@
 - When labels exist, they are tracked to detect missing predicted classes; if a label class receives no motifs from the model, the helper warns and fills that bucket using the label grouping so downstream evaluation does not crash. 【F:revisions/new_src/agg_instance.py†L495-L506】
 - A second warning is emitted when every labeled sample is misclassified, highlighting that the aggregated motifs reflect only the model’s (incorrect) view. 【F:revisions/new_src/agg_instance.py†L508-L517】
 
+## New quality-of-life helper
+- Aggregation can now surface progress while mining motifs. Pass `progress=True` to `aggregate_instance_explanations` to get a tqdm bar when available, or provide a custom callback `(count, total_or_none)` to integrate with notebook logging. 【F:revisions/new_src/agg_instance.py†L251-L332】【F:revisions/new_src/agg_instance.py†L556-L605】
+
 ## Why MUTAG worked but other datasets failed
 - On MUTAG, the explainee’s predictions aligned with ground truth, so both classes accumulated motifs and downstream evaluation received non-empty generated batches. 【F:revisions/new_src/agg_instance.py†L439-L493】
 - On datasets like BA-2MOTIFS, the explainee misclassified many graphs; motifs were logged under the wrong predicted class, leaving one class empty and causing `run_eval_summary` to raise a “graphs must contain at least one generated graph” error for the missing batch. 【F:revisions/new_src/agg_instance.py†L439-L493】
