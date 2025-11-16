@@ -411,13 +411,6 @@ def eval_plot(
     fig_width = max(1, max_limit * 2) * 4.5
     fig_height = len(class_pairs) * 4.5
     fig, axes = plt.subplots(len(class_pairs), max_limit * 2, figsize=(fig_width, fig_height))
-    # fig = Figure(figsize=(fig_width, fig_height))
-    # FigureCanvas(fig)  # attach an Agg canvas
-
-    axes = fig.subplots(
-        nrows=len(class_pairs),
-        ncols=max_limit * 2,
-    )
 
 
     axes_array = np.array(axes, copy=False)
