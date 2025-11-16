@@ -18,6 +18,7 @@ dependencies = [
     "pydantic>=2.12.4",
     "torchmetrics>=1.8.2",
     "seaborn>=0.13.2",
+    "psutil>=5.9.0",
     "pygmtools>=0.5.5",
     "torch==2.8",
     "pyg-lib>=0.5.0",
