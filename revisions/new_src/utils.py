@@ -4,9 +4,15 @@
 # Uses NetworkX + Matplotlib. Supports node colors, labels, edge styles,
 # and metadata attached directly to the dataset.
 
+import matplotlib
+# matplotlib.use("Agg")
+# import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
+
+
 import torch
 import networkx as nx
-import matplotlib.pyplot as plt
 import numpy as np
 from torch_geometric.data import Data, Batch
 from torch_geometric.loader import DataLoader
@@ -404,7 +410,15 @@ def eval_plot(
 
     fig_width = max(1, max_limit * 2) * 4.5
     fig_height = len(class_pairs) * 4.5
-    fig, axes = plt.subplots(len(class_pairs), max_limit * 2, figsize=(fig_width, fig_height))
+    #fig, axes = plt.subplots(len(class_pairs), max_limit * 2, figsize=(fig_width, fig_height))
+    fig = Figure(figsize=(fig_width, fig_height))
+    FigureCanvas(fig)  # attach an Agg canvas
+
+    axes = fig.subplots(
+        nrows=len(class_pairs),
+        ncols=max_limit * 2,
+    )
+
 
     axes_array = np.array(axes, copy=False)
     if axes_array.ndim == 1:
@@ -477,4 +491,5 @@ def eval_plot(
 
     fig.suptitle("Generated vs Observed graph pairs", fontsize=16)
     fig.tight_layout(rect=(0, 0, 1, 0.96))
-    plt.show()
+    #plt.show()
+    fig.show()

@@ -51,6 +51,7 @@ from new_src.graph_level_dist import neural_approx_ged_dist
 from new_src.graph_sampler import GraphSampler
 from new_src.simgnn import SimGNN, train_simgnn
 from new_src.trainer import Trainer
+from new_src.utils import eval_plot
 
 SEED = 123123
 
@@ -279,7 +280,7 @@ def eval_GNNInt(data, mean_embeds, explainee, ged_model):
             mean_embeds=mean_embeds,
             explainee=explainee,
         )
-        for _ in range(25)
+        for _ in range(5)
     ]
 
     graphs_1 = [
@@ -290,7 +291,7 @@ def eval_GNNInt(data, mean_embeds, explainee, ged_model):
             mean_embeds=mean_embeds,
             explainee=explainee,
         )
-        for _ in range(25)
+        for _ in range(5)
     ]
 
     cls_split = data.split_by_class()
@@ -408,7 +409,7 @@ def prep_data(dataset_name):
         batch_size=16,
         optimizer=(o := torch.optim.Adam(m.parameters(), lr=1e-3)),
         scheduler=torch.optim.lr_scheduler.ExponentialLR(o, gamma=1),
-        epochs=25,
+        epochs=5,
         device="cpu",
     )
 
