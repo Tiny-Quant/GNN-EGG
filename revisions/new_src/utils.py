@@ -4,6 +4,7 @@
 # Uses NetworkX + Matplotlib. Supports node colors, labels, edge styles,
 # and metadata attached directly to the dataset.
 
+import itertools
 import matplotlib
 
 # Use a non-interactive backend for headless environments (e.g., scripted runs).
@@ -306,11 +307,6 @@ def eval_plot(
     for reserved in ("ax", "show"):
         plot_kwargs.pop(reserved, None)
 
-    gen_graphs_0 = list(gen_graphs_0)
-    gen_graphs_1 = list(gen_graphs_1)
-    obs_graphs_0 = list(obs_graphs_0)
-    obs_graphs_1 = list(obs_graphs_1)
-
     if not gen_graphs_0 and not gen_graphs_1:
         raise ValueError("At least one generated graph must be provided")
 
@@ -380,21 +376,35 @@ def eval_plot(
                 ged_model.train()
         return float(distance.detach().cpu().item())
 
-    gen_probs_0 = _predict_probs(gen_graphs_0, 0)
-    gen_probs_1 = _predict_probs(gen_graphs_1, 1)
-    obs_probs_0 = _predict_probs(obs_graphs_0, 0)
-    obs_probs_1 = _predict_probs(obs_graphs_1, 1)
+    def _prepare_pairs(
+        gen_graphs: Sequence[Data], obs_graphs: Sequence[Data], target_class: int
+    ) -> Sequence[tuple[Data, Data, float, float]]:
+        limited_pairs = list(
+            itertools.islice(zip(gen_graphs, obs_graphs), max_pairs)
+        )
+        if not limited_pairs:
+            return []
+
+        gen_subset = [g for g, _ in limited_pairs]
+        obs_subset = [o for _, o in limited_pairs]
+        gen_probs = _predict_probs(gen_subset, target_class)
+        obs_probs = _predict_probs(obs_subset, target_class)
+
+        return [
+            (g, o, float(gp), float(op))
+            for (g, o), gp, op in zip(limited_pairs, gen_probs, obs_probs)
+        ]
 
     class_pairs = [
         (
             0,
             class_labels[0] if len(class_labels) > 0 else "Class 0",
-            list(zip(gen_graphs_0, obs_graphs_0, gen_probs_0, obs_probs_0)),
+            _prepare_pairs(gen_graphs_0, obs_graphs_0, 0),
         ),
         (
             1,
             class_labels[1] if len(class_labels) > 1 else "Class 1",
-            list(zip(gen_graphs_1, obs_graphs_1, gen_probs_1, obs_probs_1)),
+            _prepare_pairs(gen_graphs_1, obs_graphs_1, 1),
         ),
     ]
 

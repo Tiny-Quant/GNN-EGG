@@ -12,6 +12,7 @@ from __future__ import annotations
 import itertools
 import random
 from contextlib import contextmanager
+import math
 from typing import Callable, Dict, Mapping, MutableSequence, Optional, Sequence, Tuple
 
 import torch
@@ -504,34 +505,50 @@ def eval_summary(
             explainee, gen_graphs_1, 1, device=device
         )
 
-    batch_0 = Batch.from_data_list(gen_graphs_0)
-    batch_1 = Batch.from_data_list(gen_graphs_1)
-    if device is not None:
-        batch_0 = batch_0.to(device)
-        batch_1 = batch_1.to(device)
+    class _OnlineStats:
+        def __init__(self) -> None:
+            self.count = 0
+            self.mean = 0.0
+            self.m2 = 0.0
+
+        def update(self, value: float) -> None:
+            self.count += 1
+            delta = value - self.mean
+            self.mean += delta / self.count
+            self.m2 += delta * (value - self.mean)
+
+        def mean_std(self) -> Tuple[float, float]:
+            if self.count == 0:
+                return 0.0, 0.0
+            variance = self.m2 / self.count if self.count > 1 else 0.0
+            return self.mean, math.sqrt(variance)
+
+    stats_0 = _OnlineStats()
+    stats_1 = _OnlineStats()
 
     with _module_on_device(dist_to_0, device) as module_0, _module_on_device(
         dist_to_1, device
-    ) as module_1:
-        with torch.inference_mode():
-            del_dist_0 = (
-                module_0.evaluate(batch_0) - module_1.evaluate(batch_0)
-            )
-            del_dist_1 = (
-                module_1.evaluate(batch_1) - module_0.evaluate(batch_1)
-            )
+    ) as module_1, torch.inference_mode():
+        for graph in gen_graphs_0:
+            batch = Batch.from_data_list([graph])
+            if device is not None:
+                batch = batch.to(device)
+            delta = module_0.evaluate(batch) - module_1.evaluate(batch)
+            delta = delta.detach().float().cpu().view(-1)
+            for value in delta:
+                stats_0.update(float(value.item()))
 
-    del_dist_0 = del_dist_0.detach().float().cpu().view(-1)
-    del_dist_1 = del_dist_1.detach().float().cpu().view(-1)
+        for graph in gen_graphs_1:
+            batch = Batch.from_data_list([graph])
+            if device is not None:
+                batch = batch.to(device)
+            delta = module_1.evaluate(batch) - module_0.evaluate(batch)
+            delta = delta.detach().float().cpu().view(-1)
+            for value in delta:
+                stats_1.update(float(value.item()))
 
-    del_dist_0_mean = del_dist_0.mean().item()
-    del_dist_0_std = (
-        del_dist_0.std(unbiased=False).item() if del_dist_0.numel() > 1 else 0.0
-    )
-    del_dist_1_mean = del_dist_1.mean().item()
-    del_dist_1_std = (
-        del_dist_1.std(unbiased=False).item() if del_dist_1.numel() > 1 else 0.0
-    )
+    del_dist_0_mean, del_dist_0_std = stats_0.mean_std()
+    del_dist_1_mean, del_dist_1_std = stats_1.mean_std()
 
     print(f"Prediction Interval Class 0 {tcp_0[0]} +/- {tcp_0[1]}\n")
     print(f"Prediction Interval Class 1 {tcp_1[0]} +/- {tcp_1[1]}\n")

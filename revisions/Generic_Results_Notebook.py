@@ -417,7 +417,7 @@ def main() -> None:  # noqa: C901 - preserve notebook flow
 
     data_ref = ray.put(data)
     mean_embeds_ref = ray.put(mean_embeds)
-    cls_split_ref = ray.put(data.split_by_class())
+    cls_split_ref = ray.put(cls_split)
 
     def tune_generator(
         config,
@@ -628,6 +628,11 @@ def main() -> None:  # noqa: C901 - preserve notebook flow
         layout="kamada",
     )
     log_memory(logger, "after evaluation")
+
+    del graphs_0, graphs_1
+    gc.collect()
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     logger.info("Artifacts saved to %s", output_dir)
 
