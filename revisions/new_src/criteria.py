@@ -56,6 +56,7 @@ class EmbeddingCriterion(nn.Module):
         assert len(embeds.shape) == 2
         return (1 - F.cosine_similarity(self.target[None, :], embeds)).mean()
 
+
 class KLDivergencePenalty(nn.Module):
     def __init__(self, binary=True, eps=1e-4):
         super().__init__()
@@ -69,3 +70,12 @@ class KLDivergencePenalty(nn.Module):
             p = torch.stack([p, 1-p], dim=-1)
             q = torch.stack([q, 1-q], dim=-1)
         return torch.sum(p * (p / q).log())
+
+
+class NormPenalty(nn.Module):
+    def __init__(self, order=2):
+        super().__init__()
+        self.order = order
+
+    def forward(self, x):
+        return x.norm(p=self.order)
