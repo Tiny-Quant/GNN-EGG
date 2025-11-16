@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Union
+import warnings
 
 import torch
 from torch import Tensor, nn
@@ -355,6 +356,54 @@ def _predict_class_from_model(model: nn.Module, graph: Data, device: torch.devic
     return int(probs.argmax(dim=-1).item())
 
 
+def _graph_label(graph: Data) -> Optional[int]:
+    label = getattr(graph, "y", None)
+    if label is None:
+        return None
+    if isinstance(label, Tensor):
+        if label.numel() != 1:
+            return None
+        return int(label.view(-1)[0].item())
+    try:
+        return int(label)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return None
+
+
+def _resolve_graph_class(
+    graph: Data,
+    explainee: Optional[nn.Module],
+    device: torch.device,
+    *,
+    prefer_prediction: bool = True,
+) -> tuple[int, Optional[int], Optional[int]]:
+    """Return the grouping class along with predicted/label metadata.
+
+    Parameters
+    ----------
+    prefer_prediction:
+        When ``True`` (default), use the explainee's prediction if available and
+        only fall back to the ground-truth label when no prediction path is
+        provided.
+    """
+
+    label = _graph_label(graph)
+    prediction: Optional[int] = None
+    if explainee is not None:
+        prediction = _predict_class_from_model(explainee, graph, device)
+
+    if prefer_prediction and prediction is not None:
+        return prediction, prediction, label
+    if label is not None:
+        return label, prediction, label
+    if prediction is not None:
+        return prediction, prediction, label
+    raise ValueError(
+        "Graph does not contain a scalar 'y' attribute; "
+        "provide class_getter or explainee to predict labels."
+    )
+
+
 def aggregate_instance_explanations(
     dataset: Iterable[Data],
     explainer: Explainer,
@@ -374,19 +423,17 @@ def aggregate_instance_explanations(
     explainer:
         Configured :class:`Explainer` returned by :func:`build_explainer`.
     explainee:
-        Original model used to predict classes.  Required if ``class_getter`` is
-        not supplied.
+        Original model used to predict classes when a graph does not expose a
+        scalar ``y`` attribute and ``class_getter`` is not supplied.
     strategy / strategy_kwargs:
         Aggregation scheme.  ``"wl_topk"`` follows the GraphFramEx-style
         pipeline (top edge components + WL hashing).  ``"node_threshold``
         aggregates salient node clusters.  Custom callables are also supported.
     class_getter:
         Optional callable that maps a :class:`Data` object to its class label.
-        When omitted the predicted label from ``explainee`` is used.
+        When omitted the helper will group by the explainee's prediction when
+        possible, otherwise it will fall back to a scalar ``data.y`` label.
     """
-
-    if class_getter is None and explainee is None:
-        raise ValueError("Either explainee or class_getter must be provided.")
 
     if device is not None:
         device = torch.device(device)
@@ -396,6 +443,9 @@ def aggregate_instance_explanations(
     strategy_kwargs = dict(strategy_kwargs or {})
 
     motif_lists: Dict[int, List[Data]] = {}
+    label_motif_lists: Dict[int, List[Data]] = {}
+    total_with_labels = 0
+    correct_predictions = 0
 
     for graph in dataset:
         data = graph
@@ -420,15 +470,51 @@ def aggregate_instance_explanations(
         data_cpu = data.cpu()
         explanation_cpu = explanation.cpu()
 
-        if class_getter is None:
-            class_id = _predict_class_from_model(explainee, data_cpu, device)
-        else:
+        if class_getter is not None:
             class_id = class_getter(data_cpu)
+            predicted_class = None
+            true_label = _graph_label(data_cpu)
+        else:
+            class_id, predicted_class, true_label = _resolve_graph_class(
+                data_cpu, explainee, device, prefer_prediction=True
+            )
+
+        if predicted_class is not None and true_label is not None:
+            total_with_labels += 1
+            if predicted_class == true_label:
+                correct_predictions += 1
 
         motifs = strategy_fn(data_cpu, explanation_cpu, **strategy_kwargs)
         if not motifs:
             continue
         motif_lists.setdefault(class_id, []).extend(motifs)
+        if true_label is not None:
+            label_motif_lists.setdefault(true_label, []).extend(motifs)
+
+    if class_getter is None:
+        missing_classes = set(label_motif_lists) - set(motif_lists)
+        if missing_classes:
+            warnings.warn(
+                "No motifs were produced for classes present in labels but not "
+                "predicted by the explainee; falling back to label-based grouping "
+                "for these classes to avoid empty evaluation batches."
+            )
+            for cls in missing_classes:
+                motifs = label_motif_lists.get(cls)
+                if motifs:
+                    motif_lists.setdefault(cls, []).extend(motifs)
+
+    if (
+        explainee is not None
+        and class_getter is None
+        and total_with_labels > 0
+        and correct_predictions == 0
+    ):
+        warnings.warn(
+            "Explainee predictions disagreed with every available label; "
+            "aggregated motifs primarily reflect model outputs rather than "
+            "ground-truth classes."
+        )
 
     batch_by_class: Dict[int, Batch] = {}
     for cls, motifs in motif_lists.items():
