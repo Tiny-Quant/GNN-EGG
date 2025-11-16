@@ -596,6 +596,13 @@ def aggregate_instance_explanations(
             data_cpu = data.cpu()
             explanation_cpu = explanation.cpu()
 
+            # Free GPU buffers promptly to keep peak memory low when iterating
+            # over many graphs (e.g., PROTEINS) with gradient-based explainers.
+            del explanation
+            del data
+            if device.type == "cuda" and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
             if class_getter is not None:
                 class_id = class_getter(data_cpu)
                 predicted_class = None
@@ -621,12 +628,16 @@ def aggregate_instance_explanations(
             motifs = strategy_fn(data_cpu, explanation_cpu, **strategy_kwargs)
             if not motifs:
                 progress_tracker.step()
+                del explanation_cpu
+                del data_cpu
                 continue
             motif_lists.setdefault(class_id, []).extend(motifs)
             if true_label is not None:
                 label_motif_lists.setdefault(true_label, []).extend(motifs)
 
             progress_tracker.step()
+            del explanation_cpu
+            del data_cpu
     finally:
         progress_tracker.close()
 
@@ -706,6 +717,7 @@ def run_eval_summary(
     observed_class_1: Union[Batch, GraphList],
     dist_to_0: nn.Module,
     dist_to_1: nn.Module,
+    dist_batch_size: int = 32,
 ) -> float:
     """Convenience wrapper that plugs motif batches into :func:`eval_summary`."""
 
@@ -722,6 +734,7 @@ def run_eval_summary(
         obs_1,
         dist_to_0,
         dist_to_1,
+        dist_batch_size=dist_batch_size,
     )
 
 
