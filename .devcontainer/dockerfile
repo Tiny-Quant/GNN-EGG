@@ -35,7 +35,7 @@ ENV UV_LINK_MODE=copy
 # Build uv venv from lock file. 
 COPY pyproject.toml uv.lock .python-version ./
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen
+    uv sync --frozen --no-install-project
 RUN echo '. ../../opt/venv/bin/activate' >> ~/.bashrc
 
 # Set Git user configuration.

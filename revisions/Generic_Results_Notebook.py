@@ -201,15 +201,15 @@ def main() -> None:  # noqa: C901 - preserve notebook flow
     config = {
         "DATASET_NAME": DATASET_NAME,
         "device": args.device,
-        "explainee": {"epochs": 200, "batch_size": 64, "lr": 1e-3},
-        "ged_model": {"n_perds": 4, "epochs": 200, "batch_size": 64},
+        "explainee": {"epochs": 10, "batch_size": 16, "lr": 1e-3},
+        "ged_model": {"n_perds": 1, "epochs": 1, "batch_size": 16},
         "tune": {
-            "n_trials": 16,
+            "n_trials": 2,
             "max_nodes": 24,
             "iters_per_sample": 16,
-            "samples_per_trial": 24,
+            "samples_per_trial": 2,
         },
-        "train": {"iters_per_sample": 200, "samples_per_trial": 100},
+        "train": {"iters_per_sample": 100, "samples_per_trial": 25},
     }
 
     logger.info("Config: %s", json.dumps(config, indent=2))
@@ -405,11 +405,14 @@ def main() -> None:  # noqa: C901 - preserve notebook flow
     # ------------------------------------------------------------------
     import ray
     from ray import tune
+    import gc
 
     ray.shutdown()
     ray.init(
-        runtime_env={"py_modules": [str(Path(__file__).resolve().parent / "new_src")]},
+        #runtime_env={"py_modules": [str(Path(__file__).resolve().parent / "new_src")]},
         num_gpus=1,
+        num_cpus=1,
+        local_mode=True, 
     )
 
     data_ref = ray.put(data)
@@ -425,6 +428,7 @@ def main() -> None:  # noqa: C901 - preserve notebook flow
         gen_samples,
         iters_per_sample,
     ):
+        import torch 
         from new_src.eval import eval_summary
         from new_src.graph_level_dist import neural_approx_ged_dist
 
@@ -485,6 +489,20 @@ def main() -> None:  # noqa: C901 - preserve notebook flow
 
         score = eval_summary(explainee, graphs_0, graphs_1, cls_split[0], cls_split[1], dist_to_0, dist_to_1)
         tune.report(score=float(score))
+
+        del (
+            data,
+            mean_embeds,
+            cls_split,
+            graphs_0,
+            graphs_1,
+            dist_to_0,
+            dist_to_1,
+        )
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()       
+
         return {"score": float(score)}
 
     possible_weight = [0.0, 1e-2, 1e-1, 1.0, 1e1, 1e2]
@@ -508,9 +526,10 @@ def main() -> None:  # noqa: C901 - preserve notebook flow
     )
 
     gen_tuner = tune.Tuner(
-        trainable=tune.with_resources(trainable, resources={"gpu": 1}),
+        trainable=tune.with_resources(trainable, resources={"cpu": 2, "gpu": 1}),
         param_space=search_space,
         tune_config=tune.TuneConfig(num_samples=config["tune"]["n_trials"], metric="score", mode="max"),
+        max_concurrent_trials=1, 
     )
 
     tune_results = gen_tuner.fit()
