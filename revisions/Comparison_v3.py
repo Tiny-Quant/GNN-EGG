@@ -171,6 +171,7 @@ class PlotSaver:
         self.base_dir = base_dir
         self.logger = logger
         self._original_show = plt.show
+        self._patched_show = None
         self.prefix = "plot"
         self.counter = 0
 
@@ -193,11 +194,16 @@ class PlotSaver:
             plt.close(fig)
 
     def __enter__(self):
-        plt.show = self._save_and_close  # type: ignore[assignment]
+        def _patched_show(*args, **kwargs):
+            return self._save_and_close(*args, **kwargs)
+
+        self._patched_show = _patched_show
+        plt.show = self._patched_show  # type: ignore[assignment]
         return self
 
     def __exit__(self, exc_type, exc, tb):
         plt.show = self._original_show  # type: ignore[assignment]
+        self._patched_show = None
 
 
 # ---------------------------
