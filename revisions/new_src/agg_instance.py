@@ -452,9 +452,20 @@ def _graph_label(graph: Data) -> Optional[int]:
     if label is None:
         return None
     if isinstance(label, Tensor):
-        if label.numel() != 1:
+        if label.numel() == 0:
             return None
-        return int(label.view(-1)[0].item())
+
+        flattened = label.view(-1)
+        if flattened.numel() == 1:
+            return int(flattened.item())
+
+        # Heuristic: treat 1D vectors as one-hot/probability labels and take
+        # the argmax.  This covers datasets that encode labels as length-C
+        # tensors instead of scalars (e.g., ``[0, 1]`` for class 1).
+        if flattened.dim() == 1:
+            return int(flattened.argmax().item())
+
+        return None
     try:
         return int(label)
     except (TypeError, ValueError):  # pragma: no cover - defensive
