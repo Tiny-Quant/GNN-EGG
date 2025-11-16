@@ -4,9 +4,15 @@
 # Uses NetworkX + Matplotlib. Supports node colors, labels, edge styles,
 # and metadata attached directly to the dataset.
 
+import matplotlib
+
+# Use a non-interactive backend for headless environments (e.g., scripted runs).
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
+
 import torch
 import networkx as nx
-import matplotlib.pyplot as plt
 import numpy as np
 from torch_geometric.data import Data, Batch
 from torch_geometric.loader import DataLoader
@@ -405,6 +411,7 @@ def eval_plot(
     fig_width = max(1, max_limit * 2) * 4.5
     fig_height = len(class_pairs) * 4.5
     fig, axes = plt.subplots(len(class_pairs), max_limit * 2, figsize=(fig_width, fig_height))
+
 
     axes_array = np.array(axes, copy=False)
     if axes_array.ndim == 1:
