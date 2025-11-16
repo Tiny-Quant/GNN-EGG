@@ -5,10 +5,10 @@
 # and metadata attached directly to the dataset.
 
 import matplotlib
+
+# Use a non-interactive backend for headless environments (e.g., scripted runs).
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-# from matplotlib.figure import Figure
-# from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 
 
 import torch

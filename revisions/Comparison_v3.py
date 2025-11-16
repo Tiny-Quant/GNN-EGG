@@ -178,20 +178,26 @@ class PlotSaver:
     def set_prefix(self, prefix: str) -> None:
         self.prefix = prefix
 
-    def _save_and_close(self, *args, **kwargs) -> None:
+    def _save_and_close(self, fig=None, *args, **kwargs) -> None:
+        """Persist any open figures (or an explicitly provided one) to disk."""
+
         figures = [plt.figure(num) for num in plt.get_fignums()]
+
+        if fig is not None and fig not in figures:
+            figures.append(fig)
+
         if not figures:
             self.logger.info("plt.show() called but no figures are open.")
             return
 
-        for fig in figures:
+        for current in figures:
             self.counter += 1
             name = f"{self.prefix}_fig_{self.counter:03d}.png"
             path = self.base_dir / name
             path.parent.mkdir(parents=True, exist_ok=True)
-            fig.savefig(path, bbox_inches="tight")
+            current.savefig(path, bbox_inches="tight")
             self.logger.info("Saved plot to %s", path)
-            plt.close(fig)
+            plt.close(current)
 
     def __enter__(self):
         def _patched_show(*args, **kwargs):
