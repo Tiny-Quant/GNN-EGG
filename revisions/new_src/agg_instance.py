@@ -717,6 +717,7 @@ def run_eval_summary(
     observed_class_1: Union[Batch, GraphList],
     dist_to_0: nn.Module,
     dist_to_1: nn.Module,
+    dist_batch_size: int = 32,
 ) -> float:
     """Convenience wrapper that plugs motif batches into :func:`eval_summary`."""
 
@@ -733,6 +734,7 @@ def run_eval_summary(
         obs_1,
         dist_to_0,
         dist_to_1,
+        dist_batch_size=dist_batch_size,
     )
 
 

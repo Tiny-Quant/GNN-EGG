@@ -481,8 +481,41 @@ def eval_summary(
     obs_graphs_1: Sequence[Data],
     dist_to_0: torch.nn.Module,
     dist_to_1: torch.nn.Module,
+    *,
+    dist_batch_size: int = 32,
 ) -> float:
     device = _detect_module_device(explainee)
+
+    def _stream_relative_distance(
+        module_a: torch.nn.Module,
+        module_b: torch.nn.Module,
+        graphs: Sequence[Data],
+    ) -> Tuple[float, float]:
+        """Compute distance deltas in small batches to lower peak memory use."""
+
+        sum_delta = torch.tensor(0.0)
+        sum_sq = torch.tensor(0.0)
+        total = 0
+
+        with torch.inference_mode():
+            for start in range(0, len(graphs), dist_batch_size):
+                batch_graphs = graphs[start : start + dist_batch_size]
+                batch = Batch.from_data_list(batch_graphs)
+                if device is not None:
+                    batch = batch.to(device)
+
+                delta = module_a.evaluate(batch) - module_b.evaluate(batch)
+                flat = delta.detach().float().cpu().view(-1)
+
+                sum_delta += flat.sum()
+                sum_sq += (flat * flat).sum()
+                total += flat.numel()
+
+        mean = sum_delta / total
+        var = sum_sq / total - mean * mean
+        std = torch.sqrt(torch.clamp(var, min=0.0)) if total > 1 else torch.tensor(0.0)
+
+        return mean.item(), std.item()
 
     with _module_on_device(explainee, device):
         tcp_0 = compute_target_class_probability(
@@ -504,34 +537,15 @@ def eval_summary(
             explainee, gen_graphs_1, 1, device=device
         )
 
-    batch_0 = Batch.from_data_list(gen_graphs_0)
-    batch_1 = Batch.from_data_list(gen_graphs_1)
-    if device is not None:
-        batch_0 = batch_0.to(device)
-        batch_1 = batch_1.to(device)
-
     with _module_on_device(dist_to_0, device) as module_0, _module_on_device(
         dist_to_1, device
     ) as module_1:
-        with torch.inference_mode():
-            del_dist_0 = (
-                module_0.evaluate(batch_0) - module_1.evaluate(batch_0)
-            )
-            del_dist_1 = (
-                module_1.evaluate(batch_1) - module_0.evaluate(batch_1)
-            )
-
-    del_dist_0 = del_dist_0.detach().float().cpu().view(-1)
-    del_dist_1 = del_dist_1.detach().float().cpu().view(-1)
-
-    del_dist_0_mean = del_dist_0.mean().item()
-    del_dist_0_std = (
-        del_dist_0.std(unbiased=False).item() if del_dist_0.numel() > 1 else 0.0
-    )
-    del_dist_1_mean = del_dist_1.mean().item()
-    del_dist_1_std = (
-        del_dist_1.std(unbiased=False).item() if del_dist_1.numel() > 1 else 0.0
-    )
+        del_dist_0_mean, del_dist_0_std = _stream_relative_distance(
+            module_0, module_1, gen_graphs_0
+        )
+        del_dist_1_mean, del_dist_1_std = _stream_relative_distance(
+            module_1, module_0, gen_graphs_1
+        )
 
     print(f"Prediction Interval Class 0 {tcp_0[0]} +/- {tcp_0[1]}\n")
     print(f"Prediction Interval Class 1 {tcp_1[0]} +/- {tcp_1[1]}\n")
